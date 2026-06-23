@@ -1,13 +1,8 @@
-package com.xigeandwillian.parkingsystem.result;
+package com.xigeandwillian.parkingsystem.common.result;
 
 import lombok.Data;
 
 import java.util.List;
-
-/**
- * @author xige
- * @param <T>
- */
 
 @Data
 public class PageResult<T> {

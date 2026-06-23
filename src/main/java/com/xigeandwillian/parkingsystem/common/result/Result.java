@@ -1,15 +1,11 @@
-package com.xigeandwillian.parkingsystem.result;
+package com.xigeandwillian.parkingsystem.common.result;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import static com.xigeandwillian.parkingsystem.constant.ResultConstant.SUCCESS;
+import static com.xigeandwillian.parkingsystem.common.constant.ResultConstant.SUCCESS;
 
-/**
- * @author xige
- * @param <T>
- */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
