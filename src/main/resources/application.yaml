@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: ParkingSystem
+
+  # ====================== 数据库配置 ======================
+  datasource:
+    url: jdbc:mysql://localhost:3307/parking_system?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8
+    username: root
+    password: root123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+# ====================== 服务器配置 ======================
+server:
+  port: 8080
+
+# ====================== 日志配置 ======================
+logging:
+  level:
+    com.xigeandwillian.parking: debug
+    org.springframework: info
