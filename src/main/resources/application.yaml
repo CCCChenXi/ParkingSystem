@@ -18,3 +18,21 @@ logging:
   level:
     com.xigeandwillian.parking: debug
     org.springframework: info
+
+# ====================== JWT配置 ======================
+jwt:
+  secret: XiGeAndWillian-parking-system-jwt-secret-2026
+  expiration: 7200000
+# ====================== Redis配置 ======================
+data:
+  redis:
+    host: localhost      # Redis 服务器地址
+    port: 6380           # Redis 端口
+    password:            # 无密码可留空
+    database: 0          # 数据库索引
+    lettuce:
+      pool:
+        enabled: true
+        max-active: 8    # 最大连接数
+        max-idle: 8      # 最大空闲连接
+        min-idle: 0      # 最小空闲连接

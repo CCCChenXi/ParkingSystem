@@ -11,7 +11,7 @@ import static com.xigeandwillian.parkingsystem.common.constant.ResultConstant.SU
 @AllArgsConstructor
 public class Result<T> {
     private int code;
-    private String msg;
+    private String message;
     private T data;
 
     public static <T> Result<T> ok(T data) {
