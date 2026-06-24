@@ -1,11 +1,11 @@
-package com.xigeandwillian.parkingsystem.client.vo;
+package com.xigeandwillian.parkingsystem.client.vo.user;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
 @AllArgsConstructor
-public class LoginVO {
+public class AuthorizeVO {
     private String token;
     private UserVO userVO;
 }

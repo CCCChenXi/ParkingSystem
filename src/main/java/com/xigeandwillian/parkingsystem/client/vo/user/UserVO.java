@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.client.vo;
+package com.xigeandwillian.parkingsystem.client.vo.user;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.xigeandwillian.parkingsystem.client.dto.userLoginDTO;
 import com.xigeandwillian.parkingsystem.client.mapper.userMapper;
 import com.xigeandwillian.parkingsystem.client.service.Service.LoginService;
-import com.xigeandwillian.parkingsystem.client.vo.LoginVO;
-import com.xigeandwillian.parkingsystem.client.vo.UserVO;
+import com.xigeandwillian.parkingsystem.client.vo.user.AuthorizeVO;
+import com.xigeandwillian.parkingsystem.client.vo.user.UserVO;
 import com.xigeandwillian.parkingsystem.common.constant.JwtClaimsConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.User;
@@ -63,6 +63,6 @@ public class LoginServiceImpl implements LoginService {
         claims.put(JwtClaimsConstant.USER_ID, userVO.getId());
         String token = jwtUtil.createJWT(userVO.getUsername(), claims);
         //封装VO
-        return Result.ok(new LoginVO(token, userVO));
+        return Result.ok(new AuthorizeVO(token, userVO));
     }
 }
