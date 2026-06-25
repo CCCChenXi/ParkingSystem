@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.client.dto;
+package com.xigeandwillian.parkingsystem.client.dto.user;
 
 import lombok.Data;
 

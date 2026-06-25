@@ -1,16 +1,11 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
-import com.fasterxml.jackson.databind.util.BeanUtil;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
-import com.xigeandwillian.parkingsystem.client.service.UserService;
-import com.xigeandwillian.parkingsystem.client.vo.user.ProfileVO;
-import com.xigeandwillian.parkingsystem.client.vo.user.RegisterVO;
-import com.xigeandwillian.parkingsystem.client.dto.userLoginDTO;
-import com.xigeandwillian.parkingsystem.client.service.Service.LoginService;
+import com.xigeandwillian.parkingsystem.client.dto.user.userLoginDTO;
+import com.xigeandwillian.parkingsystem.client.service.Service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 public class UserController {
 
-    private final LoginService loginService;
+    private final UserService loginService;
     private final UserService userService;
 
 
@@ -34,7 +29,8 @@ public class UserController {
 
     @PostMapping("/send-code")
     public Result sendCode(@RequestBody String phone){
-        return Result.ok();
+
+        return userService.sendCode(phone);
     }
     /**
      * 登录
