@@ -2,6 +2,8 @@ package com.xigeandwillian.parkingsystem.client.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xigeandwillian.parkingsystem.common.entity.User;
+import org.apache.ibatis.annotations.Mapper;
 
-public interface userMapper extends BaseMapper<User> {
+@Mapper
+public interface UserMapper extends BaseMapper<User> {
 }
