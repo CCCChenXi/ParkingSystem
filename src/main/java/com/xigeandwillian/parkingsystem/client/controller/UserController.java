@@ -8,6 +8,11 @@ import com.xigeandwillian.parkingsystem.client.service.Service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,25 +25,24 @@ public class UserController {
 
     /**
      * 注册
-     * @author willian
+     * @author xige
      * @param registerDTO
      * @return
      */
     @PostMapping("/register")
-    public Result register(@RequestBody RegisterDTO registerDTO) {
+    public Result register(@Validated @RequestBody RegisterDTO registerDTO) {
         log.info("用户注册: {}", registerDTO);
         return userService.register(registerDTO);
     }
 
     /**
      * 发送验证码
-     * @author willian
+     * @author xige
      * @param code
      * @return
      */
     @PostMapping("/send-code")
     public Result sendCode(@RequestBody CodeDTO code){
-
         return userService.sendCode(code.getPhone());
     }
     /**

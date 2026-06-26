@@ -14,6 +14,7 @@ import com.xigeandwillian.parkingsystem.common.constant.JwtClaimsConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.User;
+import com.xigeandwillian.parkingsystem.common.exception.RegisterFailedException;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.JwtUtil;
 import com.xigeandwillian.parkingsystem.common.utils.RegexUtils;
@@ -21,6 +22,7 @@ import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,10 +34,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-
+@Slf4j
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class UserServiceImpl implements UserService {
 
     private final StringRedisTemplate stringRedisTemplate;
@@ -52,7 +53,13 @@ public class UserServiceImpl implements UserService {
     public Result sendCode(String phone) {
         String code = RandomUtil.randomNumbers(6);
         log.info("发送验证码: {}", code);
-        stringRedisTemplate.opsForValue().set(RedisConstant.USER_PHONE_CODE + phone, code);
+        try {
+            String key=RedisConstant.USER_PHONE_CODE+phone;
+            stringRedisTemplate.delete(key);
+            stringRedisTemplate.opsForValue().set(key,code,RedisConstant.USER_CODE_TTL, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            throw e;
+        }
         return Result.ok();
     }
 
@@ -64,33 +71,85 @@ public class UserServiceImpl implements UserService {
      * @return
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Result register(RegisterDTO registerDTO) {
-        if (registerDTO.getUsername() == null || registerDTO.getUsername().trim().isEmpty()) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "用户名不能为空");
+        log.info("用户注册：{}",registerDTO);
+        if(!RegexUtils.isValidPhone(registerDTO.getPhone())){
+            log.warn("手机号格式错误");
+            throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"手机号格式错误");
         }
-        if (registerDTO.getPassword() == null || registerDTO.getPassword().trim().isEmpty()) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "密码不能为空");
+
+        String phone = registerDTO.getPhone();
+        String key = RedisConstant.REGISTER_PHONE+phone;
+
+        //查询是否已经被注册
+        try {
+            if(redis.hasKey(key)){
+                //重置被记录手机号过期时间
+                redis.expire(key,RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
+                log.warn("手机号已经被注册了~");
+                throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"手机号已经被注册了~");
+            }
         }
-        if (!RegexUtils.isValidPhone(registerDTO.getPhone())) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "手机号格式错误");
+        catch (RegisterFailedException e){
+            //业务异常，抛出
+            throw e;
         }
-        if (registerDTO.getCode() == null || registerDTO.getCode().trim().isEmpty()) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "验证码不能为空");
+        catch (RuntimeException e) {
+            //服务器异常，放行
+            log.error("redis服务器异常");
         }
-        String key = RedisConstant.USER_PHONE_CODE + registerDTO.getPhone();
-        String code = stringRedisTemplate.opsForValue().get(key);
-//        String code ="123456";
-        if (code == null) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "验证码过期");
+
+        String code = null;
+        try {
+            //获取验证码
+            code = redis.opsForValue().get(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
+        } catch (Exception e) {
+            log.error("redis获取验证码失败!");
+            throw new RuntimeException("安全认证服务暂时不可用，请稍后在试");
         }
-        if (!Objects.equals(code, registerDTO.getCode())) {
-            return Result.fail(ResultConstant.BAD_REQUEST, "验证码错误");
+
+        if(code==null){
+            log.info("验证码过期");
+            throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"验证码过期，请重试");
         }
+        if(!Objects.equals(code, registerDTO.getCode())){
+            log.info("验证码错误");
+            throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"验证码错误");
+        }
+
         User user = new User();
-        BeanUtils.copyProperties(registerDTO, user);
-        user.setPassword(DigestUtils.md5DigestAsHex(user.getPassword().getBytes(StandardCharsets.UTF_8)));
-        return Result.ok(userMapper.insert(user));
-        //return Result.ok();
+        //组装实体类
+        BeanUtils.copyProperties(registerDTO,user);
+        //对密码加密
+        user.setPassword(DigestUtils.md5DigestAsHex(registerDTO.getPassword().getBytes(StandardCharsets.UTF_8)));
+
+        //尝试插入一条数据，手机号不重复则不会出现异常，表示插入成功
+        try {
+            userMapper.insert(user);
+        }
+        catch (DuplicateKeyException e){
+            //手机号重复
+            throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"手机号已经被注册了~");
+        }
+        catch (Exception e){
+            //数据库|redis服务器异常
+            throw new RuntimeException("服务器异常，请稍后重试");
+        }
+        try {
+            //验证成功，删除验证码，防止被重复使用
+            redis.delete(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
+            //标记手机号被注册
+            redis.opsForValue().set(RedisConstant.REGISTER_PHONE+registerDTO.getPhone(),"1",RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.error("redis服务器异常");
+        }
+        //生成token,封装返回数据
+        String token= jwtUtil.createJWT(user.getId().toString());
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user,userVO);
+        log.info("注册成功!");
+        return Result.ok(new AuthorizeVO(token,userVO));
     }
 
     /**

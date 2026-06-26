@@ -30,7 +30,12 @@
         <java.version>21</java.version>
     </properties>
     <dependencies>
-        
+        <!--valid-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
         <!--redis-->
         <dependency>
             <groupId>org.apache.commons</groupId>
