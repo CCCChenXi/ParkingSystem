@@ -22,9 +22,9 @@ public class JwtUtil {
     /**
      * 生成jwt
      *
-     * @param subject
-     * @param claims
-     * @return
+     * @param subject 主题
+     * @param claims 存储的内容
+     * @return token
      */
     public String createJWT(String subject, Map<String, Object> claims) {
 
@@ -42,10 +42,27 @@ public class JwtUtil {
     }
 
     /**
+     *
+     * @param subject jwt主题
+     * @return token
+     */
+    public String createJWT(String subject) {
+
+        //令牌过期时间
+        Date exp = new Date(System.currentTimeMillis() + jwtProperties.getExpiration());
+
+        return Jwts.builder()
+                .subject(subject)
+                .signWith(Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes()))
+                .expiration(exp)
+                .compact();
+    }
+
+    /**
      * Token解密
      *
-     * @param token
-     * @return
+     * @param token jwtToken
+     * @return 内容
      */
     public Claims parseJWT(String token) {
         SecretKey key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes());
@@ -56,5 +73,15 @@ public class JwtUtil {
                 .parseSignedClaims(token)
                 .getPayload();
         return claims;
+    }
+
+    /**
+     * @author xige
+     * @param token jwtToken
+     * @return jwt主题
+     */
+    public String getSubject(String token){
+        Claims claims = parseJWT(token);
+        return claims.getSubject();
     }
 }

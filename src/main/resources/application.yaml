@@ -36,3 +36,8 @@ logging:
 jwt:
   secret: XiGeAndWillian-parking-system-jwt-secret-2026
   expiration: 7200000
+
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true

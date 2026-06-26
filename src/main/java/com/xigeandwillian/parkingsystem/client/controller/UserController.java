@@ -1,11 +1,13 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
+import com.xigeandwillian.parkingsystem.client.dto.user.CodeDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.userLoginDTO;
 import com.xigeandwillian.parkingsystem.client.service.Service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,15 +24,14 @@ public class UserController {
 
 
     @PostMapping("/register")
-    public Result register(@RequestBody RegisterDTO registerDTO) {
+    public Result register(@Validated @RequestBody RegisterDTO registerDTO) {
         log.info("用户注册: {}", registerDTO);
         return userService.register(registerDTO);
     }
 
     @PostMapping("/send-code")
-    public Result sendCode(@RequestBody String phone){
-
-        return userService.sendCode(phone);
+    public Result sendCode(@RequestBody CodeDTO code){
+        return userService.sendCode(code.getPhone());
     }
     /**
      * 登录
