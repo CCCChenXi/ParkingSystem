@@ -186,6 +186,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public Result editProfile(ProfileEditDTO profileEditDTO) {
+        log.info("更新用户信息:{}", profileEditDTO);
         //获取原用户信息
         long userId = UserHolder.get();
         //对修改信息判断
