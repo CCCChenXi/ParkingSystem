@@ -5,6 +5,7 @@ import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
 import com.xigeandwillian.parkingsystem.client.service.Service.UserService;
+import com.xigeandwillian.parkingsystem.client.service.Service.VehicleService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final VehicleService vehicleService;
 
     /**
      * 注册
@@ -75,10 +77,14 @@ public class UserController {
         return userService.editProfile(profileEditDTO);
     }
 
+    /**
+     * 获取用户车辆信息
+     * @author willian
+     * @return
+     */
     @GetMapping("/vehicles")
     public Result vehiclesInfo(){
-        return userService.vehiclesInfo();
-
+        return vehicleService.vehiclesInfo();
     }
 
 }

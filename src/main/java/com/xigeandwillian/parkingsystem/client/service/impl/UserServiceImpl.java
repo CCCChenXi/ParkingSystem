@@ -84,9 +84,9 @@ public class UserServiceImpl implements UserService {
 
         //查询是否已经被注册
         try {
-            if(redis.hasKey(key)){
+            if(stringRedisTemplate.hasKey(key)){
                 //重置被记录手机号过期时间
-                redis.expire(key,RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
+                stringRedisTemplate.expire(key,RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
                 log.warn("手机号已经被注册了~");
                 throw new RegisterFailedException(ResultConstant.BAD_REQUEST,"手机号已经被注册了~");
             }
@@ -103,7 +103,7 @@ public class UserServiceImpl implements UserService {
         String code = null;
         try {
             //获取验证码
-            code = redis.opsForValue().get(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
+            code = stringRedisTemplate.opsForValue().get(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
         } catch (Exception e) {
             log.error("redis获取验证码失败!");
             throw new RuntimeException("安全认证服务暂时不可用，请稍后在试");
@@ -138,9 +138,9 @@ public class UserServiceImpl implements UserService {
         }
         try {
             //验证成功，删除验证码，防止被重复使用
-            redis.delete(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
+            stringRedisTemplate.delete(RedisConstant.USER_PHONE_CODE+registerDTO.getPhone());
             //标记手机号被注册
-            redis.opsForValue().set(RedisConstant.REGISTER_PHONE+registerDTO.getPhone(),"1",RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
+            stringRedisTemplate.opsForValue().set(RedisConstant.REGISTER_PHONE+registerDTO.getPhone(),"1",RedisConstant.REGISTER_PHONE_TTL, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             log.error("redis服务器异常");
         }
@@ -291,17 +291,6 @@ public class UserServiceImpl implements UserService {
             log.error("redis服务器异常~");
         }
         return Result.ok(newUserVO);
-    }
-
-    /**
-     * 车辆信息
-     *
-     * @return
-     */
-    @Override
-    public Result vehiclesInfo() {
-        long userId = UserHolder.get();
-        return Result.ok();
     }
 
 }

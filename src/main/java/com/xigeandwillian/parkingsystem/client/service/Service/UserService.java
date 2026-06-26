@@ -16,5 +16,4 @@ public interface UserService {
 
     Result editProfile(ProfileEditDTO profileEditDTO);
 
-    Result vehiclesInfo();
 }
