@@ -48,8 +48,10 @@ public class JwtUtil {
      * @return
      */
     public Claims parseJWT(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes());
 
+        //获取密钥的SecretKey对象
+        SecretKey key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes());
+        //解析除claim
         Claims claims = Jwts.parser()
                 .verifyWith(key)
                 .build()

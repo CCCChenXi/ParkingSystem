@@ -12,7 +12,7 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserVO implements Serializable {
-    private long id;
+    private Long id;
     private String username;
     private String phone;
     private String avatar;
