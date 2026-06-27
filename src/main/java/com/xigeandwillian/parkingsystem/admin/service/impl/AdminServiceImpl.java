@@ -81,7 +81,7 @@ public class AdminServiceImpl implements AdminService {
                 //如果count==null,redis异常，跳过判断
                 if (count >= RedisConstant.LOGIN_ERROR_LIMIT) {
                     redis.delete(key);
-                    redis.opsForValue().set(errorKey, "1", RedisConstant.LOGIN_ERROR_TTL, TimeUnit.SECONDS);
+                    redis.opsForValue().set(errorKey, "1", RedisConstant.LOGIN_ERROR_TTL, TimeUnit.MILLISECONDS);
                 }
             } catch (Exception e) {
                 log.error("redis服务器异常，计数失败");
