@@ -4,17 +4,17 @@ import com.xigeandwillian.parkingsystem.client.dto.user.CodeDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
-import com.xigeandwillian.parkingsystem.client.service.Service.UserService;
-import com.xigeandwillian.parkingsystem.client.service.Service.VehicleService;
+import com.xigeandwillian.parkingsystem.client.service.service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -23,13 +23,13 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
-    private final VehicleService vehicleService;
 
     /**
      * 注册
-     * @author xige
+     *
      * @param registerDTO
      * @return
+     * @author xige
      */
     @PostMapping("/register")
     public Result register(@Validated @RequestBody RegisterDTO registerDTO) {
@@ -39,52 +39,64 @@ public class UserController {
 
     /**
      * 发送验证码
-     * @author xige
+     *
      * @param code
      * @return
+     * @author xige
      */
     @PostMapping("/send-code")
-    public Result sendCode(@RequestBody CodeDTO code){
+    public Result sendCode(@Validated @RequestBody CodeDTO code) {
+        log.info("发送验证码:{}", code.getPhone());
         return userService.sendCode(code.getPhone());
     }
+
     /**
      * 登录
-     * @author willian
+     *
      * @param userLoginDtTO
      * @return
+     * @author willian
      */
     @PostMapping("/login")
-    public Result login(@RequestBody LoginDTO userLoginDtTO) {
+    public Result login(@Validated @RequestBody LoginDTO userLoginDtTO) {
+        log.info("用户登录: {}", userLoginDtTO.getUsername());
         return userService.login(userLoginDtTO);
     }
 
     /**
      * 获取用户信息
-     * @author willian
+     *
      * @return
+     * @author willian
      */
     @GetMapping("/profile")
-    public Result profile(){
+    public Result profile() {
+        log.info("获取用户信息");
         return userService.userProfile();
     }
+
     /**
      * 修改用户信息
-     * @author willian
+     *
      * @return
+     * @author willian
      */
     @PutMapping("/profile")
-    public Result editProfile(@RequestBody ProfileEditDTO profileEditDTO){
+    public Result editProfile(@Validated @RequestBody ProfileEditDTO profileEditDTO) {
+        log.info("修改用户信息: {}", profileEditDTO);
         return userService.editProfile(profileEditDTO);
     }
 
     /**
      * 获取用户车辆信息
-     * @author willian
+     *
      * @return
+     * @author willian
      */
     @GetMapping("/vehicles")
-    public Result vehiclesInfo(){
-        return vehicleService.vehiclesInfo();
+    public Result vehiclesInfo() {
+        log.info("获取用户车辆信息");
+        return userService.vehiclesInfo();
     }
 
 }

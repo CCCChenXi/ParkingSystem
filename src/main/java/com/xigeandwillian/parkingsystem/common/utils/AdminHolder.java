@@ -1,15 +1,10 @@
 package com.xigeandwillian.parkingsystem.common.utils;
 
-/**
- * @author willian
- * @description: ThreadLocal
- * @date
- */
-public class UserHolder {
+public class AdminHolder {
     private static final ThreadLocal<Long> t = new ThreadLocal<>();
 
-    public static void save(Long userId) {
-        t.set(userId);
+    public static void save(Long adminId) {
+        t.set(adminId);
     }
 
     public static Long get() {

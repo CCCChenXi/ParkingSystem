@@ -21,7 +21,7 @@ public class AdminController {
 
     @PostMapping("/login")
     public Result login(@Validated @RequestBody LoginDTO loginDTO) {
-        log.info("管理员登录：{}", loginDTO);
+        log.info("管理员登录：{}", loginDTO.getUsername());
         return adminService.login(loginDTO);
     }
 }
