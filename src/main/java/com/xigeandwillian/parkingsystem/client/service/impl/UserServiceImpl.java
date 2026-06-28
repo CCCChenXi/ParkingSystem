@@ -156,9 +156,9 @@ public class UserServiceImpl implements UserService {
         Boolean isLock = redisService.hasKey(lockKey);
         if (isLock == null) {
             log.error("检测登录锁定失败");
-            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+//            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
         }
-        if (isLock) {
+        if (isLock!=null&&isLock) {
             throw new BusinessException(ResultConstant.UNAUTHORIZED, "错误尝试过多，请5分钟后再试!");
         }
 
@@ -170,10 +170,10 @@ public class UserServiceImpl implements UserService {
             Long count = redisService.increment(key);
             if (count == null) {
                 log.error("记录登录次数失败");
-                throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+//                throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
             }
 
-            if (count == 1) {
+            if (count!=null&&count == 1) {
                 if (redisService.expire(key, RedisConstant.User.USER_LOGIN_COUNT_TTL_DAY, TimeUnit.DAYS) == null) {
                     log.error("设置计数过期失败");
                     throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");

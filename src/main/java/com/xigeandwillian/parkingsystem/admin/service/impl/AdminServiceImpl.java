@@ -45,7 +45,7 @@ public class AdminServiceImpl implements AdminService {
         Boolean isLock = redisService.hasKey(lockKey);
         if (isLock == null) {
             log.error("检测登录锁定失败");
-            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+//            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
         }
         if (isLock) {
             throw new BusinessException(ResultConstant.UNAUTHORIZED, "错误尝试次数过多，请稍后再试!");

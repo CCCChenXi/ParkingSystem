@@ -52,4 +52,13 @@ public class RedisConstant {
         /** 用户会话TTL(小时) */
         public static final long USER_SESSION_TTL_HOUR = 12;
     }
+
+    public static class Vehicle{
+        /** 停车场缓存信息*/
+        public static final String PARKING_INFO = "parking:info:";
+        /** 停车场坐标信息*/
+        public static final String PARKING_GEO = "parking:geo";
+        /** 停车场返回数量*/
+        public static final long PARKING_RETURN_NUMBER = 10;
+    }
 }
