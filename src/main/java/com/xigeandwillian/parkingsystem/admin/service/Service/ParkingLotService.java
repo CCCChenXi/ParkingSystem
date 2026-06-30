@@ -1,15 +1,16 @@
 package com.xigeandwillian.parkingsystem.admin.service.Service;
 
-import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.SaveDTO;
-import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
+import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.LotSaveDTO;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 
 public interface ParkingLotService {
-    Result list();
+    Result listParkingLots();
 
-    Result delete(Long id);
+    Result deleteParkingLot(Long id);
 
-    Result update(Long id, SaveDTO saveDTO);
+    Result updateParkingLot(Long id, LotSaveDTO lotSaveDTO);
 
-    Result insert(SaveDTO saveDTO);
+    Result createParkingLot(LotSaveDTO lotSaveDTO);
+
+    Result listParkingLotNames();
 }

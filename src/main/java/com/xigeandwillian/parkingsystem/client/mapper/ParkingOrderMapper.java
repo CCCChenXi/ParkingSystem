@@ -1,0 +1,9 @@
+package com.xigeandwillian.parkingsystem.client.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
+import org.apache.ibatis.annotations.Mapper;
+
+@Mapper
+public interface ParkingOrderMapper extends BaseMapper<ParkingOrder> {
+}

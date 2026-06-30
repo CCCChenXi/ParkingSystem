@@ -53,12 +53,24 @@ public class RedisConstant {
         public static final long USER_SESSION_TTL_HOUR = 12;
     }
 
-    public static class Vehicle{
+    public static class Parking {
         /** 停车场缓存信息*/
-        public static final String PARKING_INFO = "parking:info:";
+        public static final String PARKING_LOT_INFO = "parking:lot:info:";
         /** 停车场坐标信息*/
         public static final String PARKING_GEO = "parking:geo";
+        public static final String PARKING_SPOT_STATUS = "parking:spot:status:";
+        public static final String PARKING_LOT_AVAILABLE = "parking:lot:available:";
+        /** 车位空闲状态值 */
+        public static final String SPOT_STATUS_FREE = "0";
+        /** 车位占用状态值 */
+        public static final String SPOT_STATUS_OCCUPIED = "1";
+        /** 车位状态临时表后缀 */
+        public static final String SPOT_STATUS_TEMP_SUFFIX = "-temp";
+        /** 可用车位重建分布式锁前缀 */
+        public static final String PARKING_LOT_REBUILD_LOCK = "parking:lot:rebuild:available:";
         /** 停车场返回数量*/
         public static final long PARKING_RETURN_NUMBER = 10;
+        /** 新建停车场默认车位数 */
+        public static final int DEFAULT_TOTAL_SPOTS = 0;
     }
 }

@@ -7,7 +7,7 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-public class SaveDTO {
+public class LotSaveDTO {
     private Long id;
 
     @NotBlank(message = "停车场名称不能为空")
@@ -21,9 +21,6 @@ public class SaveDTO {
 
     @NotNull(message = "纬度不能为空")
     private BigDecimal latitude;
-
-    @NotNull(message = "总车位不能为空")
-    private Integer totalSpots;
 
     @NotNull(message = "状态不能为空")
     private Integer status;
