@@ -682,11 +682,25 @@ GET /api/admin/dashboard
 
 | Method | Path | 说明 |
 |--------|------|------|
-| GET | `/api/admin/parking-lots` | 列表（含完整信息 + 可用车位数） |
+| GET | `/api/admin/parking-lots` | 分页列表（支持模糊搜索 + 状态筛选） |
 | GET | `/api/admin/parking-lots/names` | 名称列表（仅 id + name，轻量，不做 Redis 查询） |
 | POST | `/api/admin/parking-lots` | 新增 |
 | PUT | `/api/admin/parking-lots/{id}` | 编辑 |
 | DELETE | `/api/admin/parking-lots/{id}` | 删除 |
+
+**GET 列表 Query 参数**
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| page | int | 是 | — | 页码，从1开始 |
+| size | int | 是 | — | 每页条数，建议15 |
+| keyword | string | 否 | — | 模糊匹配名称、地址 |
+| status | int | 否 | — | 1=营业中，0=已关闭，不传=全部 |
+
+**GET Request 示例**
+```
+GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
+```
 
 **GET `/names` Response `data`**
 ```json
@@ -698,26 +712,36 @@ GET /api/admin/dashboard
 
 **GET 列表 Response `data`**
 ```json
-[
-  {
-    "id": 1,
-    "name": "科技园停车场",
-    "address": "南山区科技南路100号",
-    "totalSpots": 100,
-    "availableSpots": 45,
-    "longitude": 113.95,
-    "latitude": 22.54,
-    "status": 1
-  }
-]
+{
+  "total": 50,
+  "dataList": [
+    {
+      "id": 1,
+      "name": "科技园停车场",
+      "address": "南山区科技南路100号",
+      "totalSpots": 100,
+      "availableSpots": 45,
+      "longitude": 113.95,
+      "latitude": 22.54,
+      "status": 1
+    }
+  ]
+}
 ```
 
 **新增 Response `data`**
 ```json
-{ "id": 12, "name": "新停车场", "address": "地址", "totalSpots": 100, "longitude": 113.95, "latitude": 22.54, "status": 1 }
+{ "id": 12, "name": "新停车场", "address": "地址", "totalSpots": 0, "longitude": 113.95, "latitude": 22.54, "status": 1 }
 ```
 
-**新增/编辑 Request**
+> `totalSpots`、`availableSpots` 由服务端实时计算，新增/修改时不接受这两个字段。
+
+**POST Request**（`/api/admin/parking-lots`）
+```json
+{ "name": "新停车场", "address": "地址", "longitude": 113.95, "latitude": 22.54, "status": 1 }
+```
+
+**PUT Request**（`/api/admin/parking-lots/{id}`）
 ```json
 { "name": "新停车场", "address": "地址", "longitude": 113.95, "latitude": 22.54, "status": 1 }
 ```

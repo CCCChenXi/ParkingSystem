@@ -18,7 +18,9 @@ import cn.hutool.json.JSONUtil;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
+import com.xigeandwillian.parkingsystem.common.result.PageResult;
 import com.xigeandwillian.parkingsystem.common.result.Result;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -220,163 +222,49 @@ public class ParkingLotServiceImpl implements ParkingLotService {
 
 
     @Override
-    public Result listParkingLots() {
-        log.info("查询停车场列表");
+    public Result listParkingLots(Integer page, Integer size, String keyword, Integer status) {
+        log.info("分页查询停车场: page={}, size={}, keyword={}, status={}", page, size, keyword, status);
+        if (keyword != null && keyword.length() > RedisConstant.Parking.KEYWORD_MAX_LENGTH) {
+            throw new BusinessException(ResultConstant.BAD_REQUEST, "关键字过长");
+        }
+        Page<ParkingLot> p = new Page<>(page != null ? page : 1, size != null ? size : 15);
+        LambdaQueryWrapper<ParkingLot> wrapper = new LambdaQueryWrapper<>();
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like(ParkingLot::getName, keyword)
+                    .or().like(ParkingLot::getAddress, keyword));
+        }
+        if (status != null) {
+            wrapper.eq(ParkingLot::getStatus, status);
+        }
+        Page<ParkingLot> result = parkingLotMapper.selectPage(p, wrapper);
+
+        Map<String, Integer> availableMap = new HashMap<>();
         try {
-            //动静分离,静态文件存储成一个大json
-            //不分离时，每次去更新车位状态都需要取出json->解析->修改->tojson->存入redis，造成了很多的时间浪费
-            List<LotListVO> list = parkingCache.getLotList();
-            Map<Object, Object> map = stringRedisTemplate.opsForHash()
+            Map<Object, Object> entries = stringRedisTemplate.opsForHash()
                     .entries(RedisConstant.Parking.PARKING_LOT_AVAILABLE);
-            List<LotListVO> voList = list.stream().map(vo -> {
-                Object availableSpots = map.get(vo.getId().toString());
-                if (availableSpots == null) {
-                    // 缓存缺失：total=0 则预期跳过，否则按 status 状态降级重建
-                    if (vo.getTotalSpots() == 0) {
-                        vo.setAvailableSpots(0);
-                    } else {
-                        Map<Object, Object> status = stringRedisTemplate.opsForHash()
-                                .entries(RedisConstant.Parking.PARKING_SPOT_STATUS + vo.getId());
-                        //根据车位状态表是否null将重建方法分成了全量重建和只重建可用车位
-                        //为了使得查询和重建解耦，重建过程没有写着查询方法内
-                        if (status.isEmpty()) {
-                            if (fullRebuild(vo.getId())) {
-                                Object count = stringRedisTemplate.opsForHash().get(
-                                        RedisConstant.Parking.PARKING_LOT_AVAILABLE, vo.getId().toString());
-                                vo.setAvailableSpots(count != null ? Integer.parseInt(count.toString()) : 0);
-                                log.info("全量重建成功: lotId={}", vo.getId());
-                            } else {
-                                LambdaQueryWrapper<ParkingOrder> fallbackQuery = new LambdaQueryWrapper<>();
-                                fallbackQuery.eq(ParkingOrder::getLotId, vo.getId())
-                                        .between(ParkingOrder::getStatus,
-                                                OrderConstant.ORDER_STATUS_RESERVED,
-                                                OrderConstant.ORDER_STATUS_IN_PROGRESS);
-                                long occupiedCount = parkingOrderMapper.selectCount(fallbackQuery);
-                                int available = vo.getTotalSpots() - (int) occupiedCount;
-                                log.warn("全量重建失败，DB 降级: lotId={}, available={}", vo.getId(), available);
-                                vo.setAvailableSpots(Math.max(0, available));
-                            }
-                        } else {
-                            availableRebuild(vo.getId(), vo, status);
-                        }
-                    }
-                } else {
-                    vo.setAvailableSpots(Integer.parseInt(availableSpots.toString()));
-                }
-                return vo;
-            }).collect(Collectors.toList());
-            return Result.ok(voList);
+            entries.forEach((k, v) -> availableMap.put(k.toString(), Integer.parseInt(v.toString())));
         } catch (Exception e) {
-            log.error("查询停车场列表失败", e);
-            throw new BusinessException(ResultConstant.SYSTEM_ERROR, "查询停车场列表失败");
+            log.warn("Redis获取可用车位失败，降级到数据库", e);
         }
-    }
 
-    private void availableRebuild(Long lotId, LotListVO vo, Map<Object, Object> status) {
-        long freeCount = status.values().stream().filter(RedisConstant.Parking.SPOT_STATUS_FREE::equals).count();
-
-        RLock lock = redissonClient.getLock(RedisConstant.Parking.PARKING_LOT_REBUILD_LOCK + lotId);
-
-        try {
-            //加锁防止并发修改可用车位数导致覆盖问题
-
-            //怎么保证可用车位数一定和车位状态表的数据一致呢？
-            //在停车出车时，我们不仅需要修改车位状态表也需要修改可用车位数，当前因为可用车位数是null
-            //导致了无法停车出车，使得在重建可用车位数之前，车位状态表不会发生改变也就杜绝了脏数据的出现
-
-            //用户是否会因为可用车位数为null导致无法进出车辆？
-            //不会，因为在用户发现了可用车位数为null时也将会去重建可用车位数，所以我们只需要将重建时的key统一即可
-            if (lock.tryLock(1, TimeUnit.SECONDS)) {
-                try {
-                    if (!stringRedisTemplate.opsForHash().hasKey(
-                            RedisConstant.Parking.PARKING_LOT_AVAILABLE, lotId.toString())) {
-                        stringRedisTemplate.opsForHash().put(
-                                RedisConstant.Parking.PARKING_LOT_AVAILABLE,
-                                lotId.toString(), String.valueOf(freeCount));
-                        log.info("可用车位重建成功: lotId={}, count={}", lotId, freeCount);
-                    } else {
-                        Object val = stringRedisTemplate.opsForHash().get(
-                                RedisConstant.Parking.PARKING_LOT_AVAILABLE, lotId.toString());
-                        freeCount = val != null ? Long.parseLong(val.toString()) : freeCount;
-                    }
-                } finally {
-                    lock.unlock();
-                }
+        List<LotListVO> voList = result.getRecords().stream().map(lot -> {
+            LotListVO vo = new LotListVO();
+            BeanUtils.copyProperties(lot, vo);
+            Integer available = availableMap.get(lot.getId().toString());
+            if (available != null) {
+                vo.setAvailableSpots(available);
+            } else {
+                LambdaQueryWrapper<ParkingOrder> countWrapper = new LambdaQueryWrapper<>();
+                countWrapper.eq(ParkingOrder::getLotId, lot.getId())
+                        .in(ParkingOrder::getStatus, OrderConstant.ORDER_STATUS_RESERVED, OrderConstant.ORDER_STATUS_IN_PROGRESS);
+                long orderCount = parkingOrderMapper.selectCount(countWrapper);
+                vo.setAvailableSpots(lot.getTotalSpots() - (int) orderCount);
             }
-            vo.setAvailableSpots((int) freeCount);
-        } catch (Exception e) {
-            log.error("可用车位重建异常: lotId={}", lotId, e);
-            vo.setAvailableSpots((int) freeCount);
-        }
-    }
-
-    private Boolean fullRebuild(Long id) {
-        //共用一把锁，全量重建或者只重建可用车位，两个需求是矛盾的，不能同时存在
-        RLock lock = redissonClient.getLock(RedisConstant.Parking.PARKING_LOT_REBUILD_LOCK + id);
-        int tryTime = 3;
-        try {
-            while (tryTime != 0) {
-                if (lock.tryLock(500, TimeUnit.MILLISECONDS)) {
-                    try {
-                        log.info("全量重建: lotId={}", id);
-                        LambdaQueryWrapper<ParkingOrder> queryOrder = new LambdaQueryWrapper<>();
-                        queryOrder.select(ParkingOrder::getSpotId)
-                                .eq(ParkingOrder::getLotId, id)
-                                .between(ParkingOrder::getStatus, OrderConstant.ORDER_STATUS_RESERVED, OrderConstant.ORDER_STATUS_IN_PROGRESS);
-                        List<ParkingOrder> orderList = parkingOrderMapper.selectList(queryOrder);
-                        LambdaQueryWrapper<ParkingSpot> querySpot = new LambdaQueryWrapper<>();
-                        querySpot.select(ParkingSpot::getId)
-                                .eq(ParkingSpot::getLotId, id);
-                        List<ParkingSpot> spotList = parkingSpotMapper.selectList(querySpot);
-                        Map<String, String> status = new HashMap<>();
-                        spotList.forEach(spot -> {
-                            status.put(spot.getId().toString(), RedisConstant.Parking.SPOT_STATUS_FREE);
-                        });
-                        orderList.forEach(order -> {
-                            status.put(order.getSpotId().toString(), RedisConstant.Parking.SPOT_STATUS_OCCUPIED);
-                        });
-                        int count = spotList.size() - orderList.size();
-                        //为了在重建完成前，用户看不见车位状态表，将车位状态表存入临时表中，随后将其重命名成约定的状态表并设置可用车位数
-                        //为什么不直接使用lua脚本将车位状态表和可用车位数一同写入redis？
-                        //lua脚本是原子执行的，在执行时其他请求不能插入进来
-                        //如果状态表有500条数据，其他进程需要等待lua脚本插入完这500条，系统会因为lua脚本被卡住
-                        //先写入临时表在重命名的办法使得lua只需要执行俩条指令，系统不会因为lua脚本被卡住
-                        if (status.isEmpty()) {
-                            stringRedisTemplate.delete(
-                                    RedisConstant.Parking.PARKING_SPOT_STATUS + id);
-                            stringRedisTemplate.opsForHash().delete(
-                                    RedisConstant.Parking.PARKING_LOT_AVAILABLE, id.toString());
-                            log.info("全量重建结束，无车位: lotId={}", id);
-                            return true;
-                        }
-                        stringRedisTemplate.opsForHash()
-                                .putAll(RedisConstant.Parking.PARKING_SPOT_STATUS
-                                        + id + RedisConstant.Parking.SPOT_STATUS_TEMP_SUFFIX, status);
-                        Long result = stringRedisTemplate.execute(REBUILD_SCRIPT,
-                                Arrays.asList(RedisConstant.Parking.PARKING_SPOT_STATUS + id
-                                                + RedisConstant.Parking.SPOT_STATUS_TEMP_SUFFIX,
-                                        RedisConstant.Parking.PARKING_SPOT_STATUS + id,
-                                        RedisConstant.Parking.PARKING_LOT_AVAILABLE
-                                ), id, count
-                        );
-                        return result == 1;
-                    } finally {
-                        lock.unlock();
-                    }
-                } else {
-                    Thread.sleep(200);
-                    if (stringRedisTemplate.opsForHash().hasKey(RedisConstant.Parking.PARKING_LOT_AVAILABLE, id.toString())) {
-                        break;
-                    }
-                    if (--tryTime == 0) {
-                        break;
-                    }
-                    log.warn("全量重建获取锁失败,将重新尝试获取锁");
-                }
-            }
-        } catch (Exception e) {
-            log.error("全量重建发生异常: lotId={}", id, e);
-        }
-        return false;
+            return vo;
+        }).collect(Collectors.toList());
+        PageResult<LotListVO> pageResult = new PageResult<>();
+        pageResult.setTotal(result.getTotal());
+        pageResult.setDataList(voList);
+        return Result.ok(pageResult);
     }
 }

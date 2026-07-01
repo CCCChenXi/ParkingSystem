@@ -72,5 +72,7 @@ public class RedisConstant {
         public static final long PARKING_RETURN_NUMBER = 10;
         /** 新建停车场默认车位数 */
         public static final int DEFAULT_TOTAL_SPOTS = 0;
+        /** 关键字搜索最大长度 */
+        public static final int KEYWORD_MAX_LENGTH = 20;
     }
 }

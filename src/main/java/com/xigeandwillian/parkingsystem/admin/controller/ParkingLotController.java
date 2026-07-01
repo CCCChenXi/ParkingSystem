@@ -16,9 +16,9 @@ public class ParkingLotController {
     private final ParkingLotService parkingLotService;
 
     @GetMapping()
-    public Result listParkingLots(){
+    public Result listParkingLots(Integer page,Integer size,String keyword,Integer status){
         log.info("获取停车场信息");
-        return parkingLotService.listParkingLots();
+        return parkingLotService.listParkingLots(page,size,keyword,status);
     }
 
     @DeleteMapping("/{id}")
