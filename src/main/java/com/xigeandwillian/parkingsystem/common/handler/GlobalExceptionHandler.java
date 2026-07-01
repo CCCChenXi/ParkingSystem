@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(Exception.class)
     public Result handleException(Exception e) {
-        log.error("未知异常: {}", e.getMessage());
-        return Result.fail(ResultConstant.INTERNAL_SERVER_ERROR, "服务器内部错误");
+        log.error("系统异常", e);
+        return Result.fail(ResultConstant.SYSTEM_ERROR, "系统繁忙请稍后再试");
     }
 }

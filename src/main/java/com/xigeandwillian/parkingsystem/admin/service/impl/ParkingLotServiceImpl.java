@@ -77,7 +77,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
             vo.setId(lot.getId());
             vo.setName(lot.getName());
             return vo;
-        }).toList();
+        }).collect(Collectors.toList());
         return Result.ok(voList);
     }
 
@@ -225,41 +225,39 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         try {
             //动静分离,静态文件存储成一个大json
             //不分离时，每次去更新车位状态都需要取出json->解析->修改->tojson->存入redis，造成了很多的时间浪费
-            List<ParkingLot> list = parkingCache.getLotList();
+            List<LotListVO> list = parkingCache.getLotList();
             Map<Object, Object> map = stringRedisTemplate.opsForHash()
                     .entries(RedisConstant.Parking.PARKING_LOT_AVAILABLE);
-            List<LotListVO> voList = list.stream().map(lot -> {
-                LotListVO vo = new LotListVO();
-                BeanUtils.copyProperties(lot, vo);
-                Object availableSpots = map.get(lot.getId().toString());
+            List<LotListVO> voList = list.stream().map(vo -> {
+                Object availableSpots = map.get(vo.getId().toString());
                 if (availableSpots == null) {
                     // 缓存缺失：total=0 则预期跳过，否则按 status 状态降级重建
-                    if (lot.getTotalSpots() == 0) {
+                    if (vo.getTotalSpots() == 0) {
                         vo.setAvailableSpots(0);
                     } else {
                         Map<Object, Object> status = stringRedisTemplate.opsForHash()
-                                .entries(RedisConstant.Parking.PARKING_SPOT_STATUS + lot.getId());
+                                .entries(RedisConstant.Parking.PARKING_SPOT_STATUS + vo.getId());
                         //根据车位状态表是否null将重建方法分成了全量重建和只重建可用车位
                         //为了使得查询和重建解耦，重建过程没有写着查询方法内
                         if (status.isEmpty()) {
-                            if (fullRebuild(lot.getId())) {
+                            if (fullRebuild(vo.getId())) {
                                 Object count = stringRedisTemplate.opsForHash().get(
-                                        RedisConstant.Parking.PARKING_LOT_AVAILABLE, lot.getId().toString());
+                                        RedisConstant.Parking.PARKING_LOT_AVAILABLE, vo.getId().toString());
                                 vo.setAvailableSpots(count != null ? Integer.parseInt(count.toString()) : 0);
-                                log.info("全量重建成功: lotId={}", lot.getId());
+                                log.info("全量重建成功: lotId={}", vo.getId());
                             } else {
                                 LambdaQueryWrapper<ParkingOrder> fallbackQuery = new LambdaQueryWrapper<>();
-                                fallbackQuery.eq(ParkingOrder::getLotId, lot.getId())
+                                fallbackQuery.eq(ParkingOrder::getLotId, vo.getId())
                                         .between(ParkingOrder::getStatus,
                                                 OrderConstant.ORDER_STATUS_RESERVED,
                                                 OrderConstant.ORDER_STATUS_IN_PROGRESS);
                                 long occupiedCount = parkingOrderMapper.selectCount(fallbackQuery);
-                                int available = lot.getTotalSpots() - (int) occupiedCount;
-                                log.warn("全量重建失败，DB 降级: lotId={}, available={}", lot.getId(), available);
+                                int available = vo.getTotalSpots() - (int) occupiedCount;
+                                log.warn("全量重建失败，DB 降级: lotId={}, available={}", vo.getId(), available);
                                 vo.setAvailableSpots(Math.max(0, available));
                             }
                         } else {
-                            availableRebuild(lot.getId(), vo, status);
+                            availableRebuild(vo.getId(), vo, status);
                         }
                     }
                 } else {
@@ -343,6 +341,14 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                         //lua脚本是原子执行的，在执行时其他请求不能插入进来
                         //如果状态表有500条数据，其他进程需要等待lua脚本插入完这500条，系统会因为lua脚本被卡住
                         //先写入临时表在重命名的办法使得lua只需要执行俩条指令，系统不会因为lua脚本被卡住
+                        if (status.isEmpty()) {
+                            stringRedisTemplate.delete(
+                                    RedisConstant.Parking.PARKING_SPOT_STATUS + id);
+                            stringRedisTemplate.opsForHash().delete(
+                                    RedisConstant.Parking.PARKING_LOT_AVAILABLE, id.toString());
+                            log.info("全量重建结束，无车位: lotId={}", id);
+                            return true;
+                        }
                         stringRedisTemplate.opsForHash()
                                 .putAll(RedisConstant.Parking.PARKING_SPOT_STATUS
                                         + id + RedisConstant.Parking.SPOT_STATUS_TEMP_SUFFIX, status);

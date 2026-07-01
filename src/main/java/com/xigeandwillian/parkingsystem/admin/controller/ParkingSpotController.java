@@ -19,25 +19,25 @@ public class ParkingSpotController {
 
     @GetMapping("/{lotId}")
     public Result listSpotsByLotId(@PathVariable Long lotId){
-        log.info("获取停车场的所有车位信息");
+        log.info("查询车位列表: lotId={}", lotId);
         return parkingSpotService.listSpotsByLotId(lotId);
     }
 
     @DeleteMapping("/{lotId}/{id}")
     public Result deleteParkingSpot(@PathVariable Long lotId,@PathVariable Long id){
-        log.info("删除车位信息");
+        log.info("删除车位: lotId={}, id={}", lotId, id);
         return parkingSpotService.deleteParkingSpot(lotId,id);
     }
 
     @PutMapping("/{lotId}/{id}")
     public Result updateParkingSpot(@PathVariable Long lotId,@PathVariable Long id,@RequestBody SpotUpdateDTO spotUpdateDTO){
-        log.info("修改车位信息");
+        log.info("更新车位: lotId={}, id={}", lotId, id);
         return parkingSpotService.updateParkingSpot(lotId,id,spotUpdateDTO);
     }
 
     @PostMapping
     public Result batchCreateSpots(@Validated @RequestBody SpotInsertDTO spotInsertDTO){
-        log.info("批量新增车位信息: {}", spotInsertDTO.getLotId());
+        log.info("批量新增车位: lotId={}", spotInsertDTO.getLotId());
         return parkingSpotService.batchCreateSpots(spotInsertDTO);
     }
 

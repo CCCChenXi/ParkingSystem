@@ -61,7 +61,7 @@ public class UserServiceImpl implements UserService {
         try {
             stringRedisTemplate.opsForValue().set(key, code, RedisConstant.User.USER_CODE_TTL_MIN, TimeUnit.MINUTES);
         } catch (Exception e) {
-            log.error("redis服务器异常，保存验证码失败");
+            log.error("redis服务器异常，保存验证码失败", e);
         }
 
         return Result.ok();
@@ -96,7 +96,7 @@ public class UserServiceImpl implements UserService {
             // 校验验证码
             code = stringRedisTemplate.opsForValue().get(RedisConstant.User.USER_PHONE_CODE + phone);
         } catch (Exception e) {
-            log.error("redis服务器异常，获取验证码失败");
+            log.error("redis服务器异常，获取验证码失败", e);
             throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "安全认证服务暂时不可用，请稍后在试");
         }
 
@@ -120,6 +120,7 @@ public class UserServiceImpl implements UserService {
         } catch (DuplicateKeyException e) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "手机号已经被注册了~");
         } catch (Exception e) {
+            log.error("用户注册失败", e);
             throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "服务器异常，请稍后重试");
         }
         //验证成功，删除验证码，防止被重复使用

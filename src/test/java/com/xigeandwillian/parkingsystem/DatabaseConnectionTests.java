@@ -1,5 +1,6 @@
 package com.xigeandwillian.parkingsystem;
 
+import com.xigeandwillian.parkingsystem.common.cache.ParkingCache;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +14,9 @@ class DatabaseConnectionTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ParkingCache parkingCache;
 
     @Test
     void testDatabaseConnection() {
@@ -30,6 +34,11 @@ class DatabaseConnectionTests {
         String version = jdbcTemplate.queryForObject("SELECT VERSION()", String.class);
         System.out.println("MySQL Version: " + version);
         assertNotNull(version);
+    }
+
+    @Test
+    void clearCache(){
+        parkingCache.clearAll();
     }
 
 }
