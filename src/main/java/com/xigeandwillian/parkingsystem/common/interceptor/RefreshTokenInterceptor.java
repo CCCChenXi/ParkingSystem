@@ -35,8 +35,8 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
                     long id = Long.parseLong(claims.getSubject());
                     String role = claims.get(JwtClaimsConstant.ROLE, String.class);
                     if (JwtClaimsConstant.ROLE_ADMIN.equals(role)) {
-                        redisService.expire(RedisConstant.Admin.ADMIN_SESSION_PREFIX + id,
-                                RedisConstant.Admin.ADMIN_SESSION_TTL_HOUR, TimeUnit.HOURS);
+                        redisService.expire(RedisConstant.Auth.ADMIN_SESSION_PREFIX + id,
+                                RedisConstant.Auth.ADMIN_SESSION_TTL_HOUR, TimeUnit.HOURS);
                     } else if (JwtClaimsConstant.ROLE_USER.equals(role)) {
                         redisService.expire(RedisConstant.User.USER_SESSION_PREFIX + id,
                                 RedisConstant.User.USER_SESSION_TTL_HOUR, TimeUnit.HOURS);

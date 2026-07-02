@@ -5,7 +5,7 @@ package com.xigeandwillian.parkingsystem.common.constant;
  */
 public class RedisConstant {
 
-    public static class Admin {
+    public static class Auth {
         /** 管理员登录错误次数上限 */
         public static final int ADMIN_LOGIN_ERROR_LIMIT = 5;
         /** Redis key: 管理员登录错误计数 */

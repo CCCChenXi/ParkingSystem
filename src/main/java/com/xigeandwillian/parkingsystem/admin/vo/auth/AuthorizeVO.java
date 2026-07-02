@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.admin.vo.admin;
+package com.xigeandwillian.parkingsystem.admin.vo.auth;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

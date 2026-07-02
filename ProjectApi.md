@@ -830,22 +830,33 @@ GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
 
 | Method | Path | 说明 |
 |--------|------|------|
-| GET | `/api/admin/users` | 用户列表 |
+| GET | `/api/admin/users` | 分页列表（支持模糊搜索） |
 | GET | `/api/admin/users/{id}` | 用户详情 |
+
+**GET 列表 Query 参数**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | int | 是 | 页码，从1开始 |
+| size | int | 是 | 每页条数，建议10 |
+| keyword | string | 否 | 模糊匹配用户名、手机号 |
 
 **GET 列表 Response `data`**
 ```json
-[
-  {
-    "id": 1,
-    "username": "张三",
-    "phone": "13800138000",
-    "vehicles": 2,
-    "orderCount": 15,
-    "balance": 128.50,
-    "createTime": "2026-01-15 10:00"
-  }
-]
+{
+  "total": 50,
+  "dataList": [
+    {
+      "id": 1,
+      "username": "张三",
+      "phone": "13800138000",
+      "vehicles": 2,
+      "orderCount": 15,
+      "balance": 128.50,
+      "createTime": "2026-01-15 10:00"
+    }
+  ]
+}
 ```
 
 **GET 详情 Response `data`**
@@ -868,14 +879,20 @@ GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
 | Method | Path | 说明 |
 |--------|------|------|
 | GET | `/api/admin/admins` | 列表 |
+| GET | `/api/admin/admins/{id}` | 详情 |
 | POST | `/api/admin/admins` | 新增 |
 
-**GET Response `data`**
+**GET 列表 Response `data`**
 ```json
 [
   { "id": 1, "username": "admin", "role": "super", "createTime": "2026-01-01 00:00" },
   { "id": 2, "username": "operator1", "role": "operator", "createTime": "2026-06-01 12:00" }
 ]
+```
+
+**GET 详情 Response `data`**
+```json
+{ "id": 1, "username": "admin", "role": "super", "createTime": "2026-01-01 00:00" }
 ```
 
 **新增管理员 Request**
