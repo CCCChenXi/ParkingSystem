@@ -655,7 +655,42 @@ POST /api/user/logout
 GET /api/admin/dashboard
 ```
 
-**Response `data`**
+**Response `data` 字段说明**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| lotCount | int | 停车场总数 |
+| spotCount | int | 车位总数 |
+| todayOrders | int | 今日订单数 |
+| todayRevenue | number | 今日收入（元） |
+| orderTrend | array | 近7日订单趋势 |
+| revenueTrend | array | 近7日收入趋势 |
+| recentOrders | array | 最新订单列表 |
+
+**`orderTrend[]`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| date | string | 日期，如 `06/17` |
+| orders | int | 当日订单数 |
+
+**`revenueTrend[]`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| date | string | 日期，如 `06/17` |
+| revenue | number | 当日收入（元） |
+
+**`recentOrders[]`**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| lotName | string | 停车场名称 |
+| plate | string | 车牌号 |
+| status | string | 状态：`进行中` / `已结算` / `待支付` |
+| time | string | 时间，如 `10:15` |
+
+**完整响应示例**
 ```json
 {
   "lotCount": 12,
@@ -664,14 +699,25 @@ GET /api/admin/dashboard
   "todayRevenue": 5200.00,
   "orderTrend": [
     { "date": "06/17", "orders": 85 },
-    { "date": "06/18", "orders": 92 }
+    { "date": "06/18", "orders": 92 },
+    { "date": "06/19", "orders": 78 },
+    { "date": "06/20", "orders": 110 },
+    { "date": "06/21", "orders": 95 },
+    { "date": "06/22", "orders": 120 },
+    { "date": "06/23", "orders": 105 }
   ],
   "revenueTrend": [
     { "date": "06/17", "revenue": 3200 },
-    { "date": "06/18", "revenue": 3800 }
+    { "date": "06/18", "revenue": 3800 },
+    { "date": "06/19", "revenue": 2900 },
+    { "date": "06/20", "revenue": 4100 },
+    { "date": "06/21", "revenue": 3600 },
+    { "date": "06/22", "revenue": 4500 },
+    { "date": "06/23", "revenue": 3900 }
   ],
   "recentOrders": [
-    { "lotName": "科技园停车场", "plate": "粤B·88888", "status": "进行中", "time": "10:15" }
+    { "lotName": "科技园停车场", "plate": "粤B·88888", "status": "进行中", "time": "10:15" },
+    { "lotName": "华强北停车场", "plate": "粤B·12345", "status": "已结算", "time": "09:50" }
   ]
 }
 ```

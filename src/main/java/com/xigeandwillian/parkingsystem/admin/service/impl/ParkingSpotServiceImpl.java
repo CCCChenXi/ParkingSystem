@@ -331,6 +331,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
                                 if (spotListCache != null) {
                                     spotListCache.evict(lotId);
                                 }
+                                stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_SPOT_COUNT);
                                 log.info("批量新增车位成功，缓存清理完毕: lotId={}", lotId);
                             } catch (Exception e) {
                                 log.error("批量新增车位后清理缓存异常: lotId={}", lotId, e);

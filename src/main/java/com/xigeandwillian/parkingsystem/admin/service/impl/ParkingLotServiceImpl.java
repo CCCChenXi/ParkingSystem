@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.LotSaveDTO;
 import com.xigeandwillian.parkingsystem.admin.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.admin.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingLotService;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotListVO;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotNameListVO;
@@ -15,6 +16,7 @@ import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
+import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.PageResult;
 import com.xigeandwillian.parkingsystem.common.result.Result;
@@ -43,6 +45,7 @@ import java.util.stream.Collectors;
 public class ParkingLotServiceImpl implements ParkingLotService {
 
     private final ParkingLotMapper parkingLotMapper;
+    private final ParkingSpotMapper parkingSpotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -93,6 +96,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                 @Override
                 public void afterCommit() {
                     stringRedisTemplate.opsForGeo().add(RedisConstant.Parking.PARKING_GEO, new Point(parkingLot.getLongitude().doubleValue(), parkingLot.getLatitude().doubleValue()), parkingLot.getId().toString());
+                    stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_LOT_COUNT);
                 }
             });
             log.info("新增停车场: lotId={}", parkingLot.getId());
@@ -199,8 +203,10 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                 throw new BusinessException(ResultConstant.BAD_REQUEST, "存在车位被占用，无法删除停车场");
             }
         }
-        //尝试去删除停车场信息，如果出现了异常导致删除失败，我们将异常抛出，不能让事务提交
+        //尝试去删除停车场信息和该停车场下所有车位，如果出现了异常导致删除失败，我们将异常抛出，不能让事务提交
         try {
+            parkingSpotMapper.delete(new LambdaQueryWrapper<ParkingSpot>()
+                    .eq(ParkingSpot::getLotId, id));
             parkingLotMapper.deleteById(id);
         } catch (Exception e) {
             log.error("删除停车场失败: lotId={}", id, e);
@@ -227,6 +233,8 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                             if (spotListCache != null) {
                                 spotListCache.evict(id);
                             }
+                            stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_LOT_COUNT);
+                            stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_SPOT_COUNT);
                         } catch (Exception e) {
                             log.warn("删除停车场后清理缓存失败: lotId={}", id, e);
                         }

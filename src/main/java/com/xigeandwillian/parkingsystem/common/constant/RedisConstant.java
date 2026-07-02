@@ -74,5 +74,15 @@ public class RedisConstant {
         public static final int DEFAULT_TOTAL_SPOTS = 0;
         /** 关键字搜索最大长度 */
         public static final int KEYWORD_MAX_LENGTH = 20;
+        /** 仪表盘-停车场总数缓存 */
+        public static final String DASHBOARD_LOT_COUNT = "dashboard:lot:count";
+        /** 仪表盘-车位总数缓存 */
+        public static final String DASHBOARD_SPOT_COUNT = "dashboard:spot:count";
+        /** 仪表盘-趋势缓存前缀 */
+        public static final String DASHBOARD_TREND = "dashboard:trend:";
+        /** 仪表盘趋势缓存TTL(天) */
+        public static final long DASHBOARD_TREND_TTL_DAY = 7;
+        /** 仪表盘计数缓存TTL(天) */
+        public static final long DASHBOARD_COUNT_TTL_DAY = 1;
     }
 }
