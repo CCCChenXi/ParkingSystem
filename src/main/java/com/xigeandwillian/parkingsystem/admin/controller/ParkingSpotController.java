@@ -41,9 +41,4 @@ public class ParkingSpotController {
         return parkingSpotService.batchCreateSpots(spotInsertDTO);
     }
 
-    @GetMapping("/init")
-    public Result init(){
-        log.info("初始化全部停车场车位信息");
-        return parkingSpotService.init();
-    }
 }

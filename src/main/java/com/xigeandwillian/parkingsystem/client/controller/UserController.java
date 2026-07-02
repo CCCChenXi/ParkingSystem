@@ -33,7 +33,7 @@ public class UserController {
      */
     @PostMapping("/register")
     public Result register(@Validated @RequestBody RegisterDTO registerDTO) {
-        log.info("用户注册: {}", registerDTO);
+        log.info("用户注册");
         return userService.register(registerDTO);
     }
 

@@ -12,6 +12,4 @@ public interface ParkingSpotService {
     Result batchCreateSpots(SpotInsertDTO spotInsertDTO);
 
     Result updateParkingSpot(Long lotId, Long id, SpotUpdateDTO spotUpdateDTO);
-
-    Result init();
 }

@@ -17,6 +17,7 @@ public class ParkingSpot {
     private Long lotId;
     private String spotNumber;
     private Integer type;
+    private Integer seq;
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
 }
