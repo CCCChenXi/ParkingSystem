@@ -36,6 +36,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant.MAXIMUM_SIZE;
+import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Cache.NULL_TTL;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spots.LOT_SPOTS;
@@ -53,7 +55,7 @@ public class ParkingServiceImpl implements ParkingService {
 
     /*用于防范高并发请求单个停车场详细信息*/
     private final Cache<Long, ParkingLotVO> localCache = Caffeine.newBuilder()
-            .maximumSize(500)
+            .maximumSize(MAXIMUM_SIZE)
             .expireAfterWrite(1, TimeUnit.MINUTES)
             .build();
     /*Caffeine空对象缓存*/
@@ -213,7 +215,7 @@ public class ParkingServiceImpl implements ParkingService {
                 vo.setDistance(String.format("%.2f km", dis));
             });
             parkingLotVOs.sort(Comparator.comparingDouble(vo ->
-                    Double.parseDouble(vo.getDistance().replace(" km", ""))));
+                    Double.parseDouble(vo.getDistance().replace(KILOMETER, ""))));
         }
 
         // 4.覆盖 Geo 返回的距离到 VO

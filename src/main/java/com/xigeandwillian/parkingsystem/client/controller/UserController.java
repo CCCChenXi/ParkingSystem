@@ -1,7 +1,9 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
-import com.xigeandwillian.parkingsystem.client.dto.user.*;
-import com.xigeandwillian.parkingsystem.client.service.service.VehicleService;
+import com.xigeandwillian.parkingsystem.client.dto.user.CodeDTO;
+import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
+import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
+import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
 import com.xigeandwillian.parkingsystem.client.service.service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +15,6 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
-    private final VehicleService vehicleService;
 
     /**
      * 注册
@@ -46,7 +46,7 @@ public class UserController {
      */
     @PostMapping("/send-code")
     public Result sendCode(@Validated @RequestBody CodeDTO code) {
-        log.info("发送验证码");
+        log.info("发送验证码:{}", code.getPhone());
         return userService.sendCode(code.getPhone());
     }
 
@@ -59,7 +59,7 @@ public class UserController {
      */
     @PostMapping("/login")
     public Result login(@Validated @RequestBody LoginDTO userLoginDtTO) {
-        log.info("用户登录");
+        log.info("用户登录: {}", userLoginDtTO.getUsername());
         return userService.login(userLoginDtTO);
     }
 
@@ -83,9 +83,8 @@ public class UserController {
      */
     @PutMapping("/profile")
     public Result editProfile(@Validated @RequestBody ProfileEditDTO profileEditDTO) {
-        log.info("修改用户信息");
+        log.info("修改用户信息: {}", profileEditDTO);
         return userService.editProfile(profileEditDTO);
     }
-
 
 }
