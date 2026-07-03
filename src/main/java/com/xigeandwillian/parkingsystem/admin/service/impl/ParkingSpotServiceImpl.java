@@ -6,11 +6,11 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotInsertDTO;
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotUpdateDTO;
-import com.xigeandwillian.parkingsystem.admin.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.admin.mapper.AdminParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingSpotService;
 import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.common.cache.ParkingCache;
 import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class ParkingSpotServiceImpl extends ServiceImpl<AdminParkingSpotMapper, ParkingSpot> implements ParkingSpotService {
+public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, ParkingSpot> implements ParkingSpotService {
     private final ParkingLotMapper parkingLotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
     private final StringRedisTemplate stringRedisTemplate;

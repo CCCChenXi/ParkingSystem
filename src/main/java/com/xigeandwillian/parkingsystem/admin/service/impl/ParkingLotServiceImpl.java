@@ -4,12 +4,12 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.LotSaveDTO;
-import com.xigeandwillian.parkingsystem.admin.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.admin.mapper.AdminParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingLotService;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotListVO;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotNameListVO;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
 public class ParkingLotServiceImpl implements ParkingLotService {
 
     private final ParkingLotMapper parkingLotMapper;
-    private final AdminParkingSpotMapper adminParkingSpotMapper;
+    private final ParkingSpotMapper parkingSpotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -205,7 +205,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         }
         //尝试去删除停车场信息和该停车场下所有车位，如果出现了异常导致删除失败，我们将异常抛出，不能让事务提交
         try {
-            adminParkingSpotMapper.delete(new LambdaQueryWrapper<ParkingSpot>()
+            parkingSpotMapper.delete(new LambdaQueryWrapper<ParkingSpot>()
                     .eq(ParkingSpot::getLotId, id));
             parkingLotMapper.deleteById(id);
         } catch (Exception e) {

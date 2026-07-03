@@ -3,8 +3,8 @@ package com.xigeandwillian.parkingsystem.client.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingMapper;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingSpotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotCache;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
@@ -48,7 +48,7 @@ import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spo
 @RequiredArgsConstructor
 public class ParkingServiceImpl implements ParkingService {
 
-    private final ParkingMapper parkingMapper;
+    private final ParkingLotMapper parkingLotMapper;
     private final ParkingSpotMapper parkingSpotMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
@@ -87,7 +87,7 @@ public class ParkingServiceImpl implements ParkingService {
                                     .limit(PARKING_RETURN_NUMBER)
                     );
         } catch (Exception e) {
-            log.error("redis获取停车场列表失败!");
+            log.error("获取停车场列表失败", e);
             // 降级：经纬度 1°≈111km，计算 bounding-box 查 DB
             // 50km ≈ 0.45°
             double lat = latitude.doubleValue();
@@ -98,7 +98,7 @@ public class ParkingServiceImpl implements ParkingService {
                     .between("latitude", lat - latDiff, lat + latDiff)
                     .between("longitude", lon - lonDiff, lon + lonDiff)
                     .last("LIMIT " + PARKING_DEFAULT_NUMBER);
-            List<ParkingLot> parkingLots = parkingMapper.selectList(wrapper);
+            List<ParkingLot> parkingLots = parkingLotMapper.selectList(wrapper);
             return Result.ok(parkingLots);
         }
 
@@ -128,7 +128,7 @@ public class ParkingServiceImpl implements ParkingService {
             long missCount = jsonList.stream().filter(Objects::isNull).count();
 
             if (missCount == ids.size()) {
-                List<ParkingLot> lotList = parkingMapper.selectByIds(ids);
+                List<ParkingLot> lotList = parkingLotMapper.selectByIds(ids);
 
                 // DB 返回顺序不一定与 ids 一致，按 id 建立映射
                 Map<Long, ParkingLot> lotMap = new HashMap<>();
@@ -166,7 +166,7 @@ public class ParkingServiceImpl implements ParkingService {
                 }
                 List<Long> missIds = missIndices.stream().map(ids::get).toList();
 
-                List<ParkingLot> missLots = parkingMapper.selectByIds(missIds);
+                List<ParkingLot> missLots = parkingLotMapper.selectByIds(missIds);
 
                 Map<Long, ParkingLot> missLotMap = new HashMap<>();
                 for (ParkingLot lot : missLots) {
@@ -206,7 +206,7 @@ public class ParkingServiceImpl implements ParkingService {
         } catch (Exception e) {
             log.info("从redis获取停车场详细信息失败，回查数据库");
             // DB 降级：查询结果无序，需计算距离并重新排序
-            List<ParkingLot> ParkingLots = parkingMapper.selectByIds(ids);
+            List<ParkingLot> ParkingLots = parkingLotMapper.selectByIds(ids);
             parkingLotVOs = BeanUtil.copyToList(ParkingLots, ParkingLotVO.class);
             parkingLotVOs.forEach(vo -> {
                 double dis = DistanceUtil.haversine(
@@ -262,11 +262,11 @@ public class ParkingServiceImpl implements ParkingService {
                 return Result.ok(vo);
             }
         } catch (Exception e) {
-            log.error("redis服务器异常!");
+            log.error("获取停车场信息失败", e);
         }
 
         // 2.DB 降级（缓存穿透 / Redis 不可用）
-        ParkingLot parkingLot = parkingMapper.selectById(id);
+        ParkingLot parkingLot = parkingLotMapper.selectById(id);
         if (parkingLot == null) {
             localCache.put(id, NULL_MARKER);
             throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在");
@@ -357,7 +357,7 @@ public class ParkingServiceImpl implements ParkingService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Redis服务异常!", e);
+            log.error("获取车位列表失败", e);
             // DB 降级
             List<ParkingSpot> lotSpots = parkingSpotMapper.selectList(
                     new QueryWrapper<ParkingSpot>()

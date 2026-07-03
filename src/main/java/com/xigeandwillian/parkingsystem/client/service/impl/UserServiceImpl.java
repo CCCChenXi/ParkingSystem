@@ -6,7 +6,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
-import com.xigeandwillian.parkingsystem.client.mapper.UserMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.UserMapper;
 import com.xigeandwillian.parkingsystem.client.service.service.UserService;
 import com.xigeandwillian.parkingsystem.client.vo.user.AuthorizeVO;
 import com.xigeandwillian.parkingsystem.client.vo.user.UserVO;
@@ -57,7 +57,7 @@ public class UserServiceImpl implements UserService {
         try {
             stringRedisTemplate.opsForValue().set(key, code, RedisConstant.User.USER_CODE_TTL_MIN, TimeUnit.MINUTES);
         } catch (Exception e) {
-            log.error("redis服务器异常，保存验证码失败");
+            log.error("保存验证码失败", e);
         }
 
         return Result.ok();
@@ -79,7 +79,7 @@ public class UserServiceImpl implements UserService {
 
         Boolean registered = redisService.hasKey(key);
         if (registered == null) {
-            log.error("redis服务器异常，查询注册状态失败");
+            log.error("查询注册状态失败");
         } else if (registered) {
             redisService.expire(key, RedisConstant.User.USER_REGISTER_PHONE_TTL_DAY, TimeUnit.DAYS);
             log.warn("手机号已经被注册了~");
@@ -90,7 +90,7 @@ public class UserServiceImpl implements UserService {
         try {
             code = stringRedisTemplate.opsForValue().get(RedisConstant.User.USER_PHONE_CODE + phone);
         } catch (Exception e) {
-            log.error("redis服务器异常，获取验证码失败");
+            log.error("获取验证码失败", e);
             throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "安全认证服务暂时不可用，请稍后在试");
         }
 

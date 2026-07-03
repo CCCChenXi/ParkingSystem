@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.admin.mapper;
+package com.xigeandwillian.parkingsystem.common.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xigeandwillian.parkingsystem.common.entity.Coupon;

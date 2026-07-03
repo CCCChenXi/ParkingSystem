@@ -4,13 +4,13 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.xigeandwillian.parkingsystem.admin.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.admin.mapper.AdminParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.DashboardService;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.DashboardVO;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.RecentOrderVO;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.TrendVO;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
@@ -36,7 +36,7 @@ public class DashboardServiceImpl implements DashboardService {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final ParkingLotMapper parkingLotMapper;
-    private final AdminParkingSpotMapper adminParkingSpotMapper;
+    private final ParkingSpotMapper parkingSpotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
 
     private static final DateTimeFormatter DAY_FORMAT = DateTimeFormatter.ofPattern("MM/dd");
@@ -105,7 +105,7 @@ public class DashboardServiceImpl implements DashboardService {
         } catch (Exception e) {
             log.warn("从缓存获取车位总数失败，降级数据库", e);
         }
-        Long count = adminParkingSpotMapper.selectCount(Wrappers.emptyWrapper());
+        Long count = parkingSpotMapper.selectCount(Wrappers.emptyWrapper());
         try {
             stringRedisTemplate.opsForValue()
                     .set(RedisConstant.Parking.DASHBOARD_SPOT_COUNT, String.valueOf(count),

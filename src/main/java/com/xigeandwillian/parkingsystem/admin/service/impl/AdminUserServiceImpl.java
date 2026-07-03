@@ -2,12 +2,12 @@ package com.xigeandwillian.parkingsystem.admin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.xigeandwillian.parkingsystem.admin.mapper.AdminUserMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.AdminUserService;
 import com.xigeandwillian.parkingsystem.admin.vo.user.AdminUserListVO;
-import com.xigeandwillian.parkingsystem.client.mapper.ParkingOrderMapper;
-import com.xigeandwillian.parkingsystem.client.mapper.VehicleMapper;
-import com.xigeandwillian.parkingsystem.client.mapper.WalletMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.UserMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.VehicleMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.WalletMapper;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @Service
 public class AdminUserServiceImpl implements AdminUserService {
 
-    private final AdminUserMapper adminUserMapper;
+    private final UserMapper userMapper;
     private final VehicleMapper vehicleMapper;
     private final ParkingOrderMapper parkingOrderMapper;
     private final WalletMapper walletMapper;
@@ -59,7 +59,7 @@ public class AdminUserServiceImpl implements AdminUserService {
             wrapper.and(w -> w.like(User::getUsername, keyword)
                     .or().like(User::getPhone, keyword));
         }
-        Page<User> userPage = adminUserMapper.selectPage(p, wrapper);
+        Page<User> userPage = userMapper.selectPage(p, wrapper);
 
         List<Long> userIds = userPage.getRecords().stream()
                 .map(User::getId)
@@ -109,7 +109,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (id == null) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "用户ID不能为空");
         }
-        User user = adminUserMapper.selectById(id);
+        User user = userMapper.selectById(id);
         if (user == null) {
             log.warn("用户不存在: id={}", id);
             throw new BusinessException(ResultConstant.BAD_REQUEST, "用户不存在");

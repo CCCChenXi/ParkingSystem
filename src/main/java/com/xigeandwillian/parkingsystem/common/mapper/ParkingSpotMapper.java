@@ -1,10 +1,9 @@
-package com.xigeandwillian.parkingsystem.client.mapper;
+package com.xigeandwillian.parkingsystem.common.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface ParkingSpotMapper extends BaseMapper<ParkingSpot>
-{
+public interface ParkingSpotMapper extends BaseMapper<ParkingSpot> {
 }

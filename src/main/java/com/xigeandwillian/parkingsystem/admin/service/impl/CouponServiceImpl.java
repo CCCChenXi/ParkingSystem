@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.admin.service.impl;
 
 import com.xigeandwillian.parkingsystem.admin.dto.coupon.CouponSaveDTO;
-import com.xigeandwillian.parkingsystem.admin.mapper.CouponMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.CouponMapper;
 import com.xigeandwillian.parkingsystem.admin.service.Service.CouponService;
 import com.xigeandwillian.parkingsystem.admin.vo.coupon.CouponListVO;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
