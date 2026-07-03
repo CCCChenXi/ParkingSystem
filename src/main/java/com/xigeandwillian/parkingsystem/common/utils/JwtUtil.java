@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 
@@ -28,7 +27,6 @@ public class JwtUtil {
      */
     public String createJWT(String subject, Map<String, Object> claims) {
 
-        //令牌过期时间
         Date exp = new Date(System.currentTimeMillis() + jwtProperties.getExpiration());
 
         String jwtToken = Jwts.builder()
@@ -48,7 +46,6 @@ public class JwtUtil {
      */
     public String createJWT(String subject) {
 
-        //令牌过期时间
         Date exp = new Date(System.currentTimeMillis() + jwtProperties.getExpiration());
 
         return Jwts.builder()
@@ -66,9 +63,7 @@ public class JwtUtil {
      */
     public Claims parseJWT(String token) {
 
-        //获取密钥的SecretKey对象
         SecretKey key = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes());
-        //解析除claim
         Claims claims = Jwts.parser()
                 .verifyWith(key)
                 .build()

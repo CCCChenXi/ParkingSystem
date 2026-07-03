@@ -1,11 +1,22 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xigeandwillian.parkingsystem.client.mapper.ParkingMapper;
-import com.xigeandwillian.parkingsystem.client.service.Service.ParkingService;
+import com.xigeandwillian.parkingsystem.client.mapper.ParkingSpotMapper;
+import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
+import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotCache;
+import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
+import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
+import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
+import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.Result;
+import com.xigeandwillian.parkingsystem.common.utils.DistanceUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.geo.Distance;
@@ -16,14 +27,19 @@ import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.data.redis.domain.geo.GeoShape;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
-import static com.baomidou.mybatisplus.extension.ddl.DdlScriptErrorHandler.PrintlnLogErrorHandler.log;
-import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.*;
+import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Cache.NULL_TTL;
+import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
+import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spots.LOT_SPOTS;
+import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spots.LOT_SPOTS_BITMAP;
 
 @Service
 @Slf4j
@@ -31,7 +47,17 @@ import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.*;
 public class ParkingServiceImpl implements ParkingService {
 
     private final ParkingMapper parkingMapper;
+    private final ParkingSpotMapper parkingSpotMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private final RedissonClient redissonClient;
+
+    /*用于防范高并发请求单个停车场详细信息*/
+    private final Cache<Long, ParkingLotVO> localCache = Caffeine.newBuilder()
+            .maximumSize(500)
+            .expireAfterWrite(1, TimeUnit.MINUTES)
+            .build();
+    /*Caffeine空对象缓存*/
+    private static final ParkingLotVO NULL_MARKER = new ParkingLotVO();
 
     /**
      * 获取附近停车场列表
@@ -41,44 +67,169 @@ public class ParkingServiceImpl implements ParkingService {
      * @return
      */
     @Override
-    public Result parkingList(BigDecimal longitude, BigDecimal latitude) {
+    public Result parkingList(BigDecimal longitude, BigDecimal latitude, long radius) {
+
         GeoResults<RedisGeoCommands.GeoLocation<String>> results = null;
+        // 1.Geo 搜索附近停车场
         try {
-            //从缓存获取坐标范围内的停车场列表
             results = stringRedisTemplate
                     .opsForGeo()
                     .search(
                             PARKING_GEO,
-                            //中心点
                             GeoReference.fromCoordinate(new Point(longitude.doubleValue(), latitude.doubleValue())),
-                            //搜索形状
-                            GeoShape.byRadius(new Distance(PARKING_DEFAULT_RADIUS, Metrics.KILOMETERS)),
-                            //返回参数
+                            GeoShape.byRadius(new Distance(radius, Metrics.METERS)),
                             RedisGeoCommands.GeoSearchCommandArgs.newGeoSearchArgs()
-                                    .includeCoordinates()//返回坐标
-                                    .includeDistance()//返回距离
-                                    .sortAscending()//排序
-                                    .limit(PARKING_RETURN_NUMBER)//限制数量
+                                    .includeCoordinates()
+                                    .includeDistance()
+                                    .sortAscending()
+                                    .limit(PARKING_RETURN_NUMBER)
                     );
         } catch (Exception e) {
             log.error("redis获取停车场列表失败!");
-            throw new RuntimeException("附近无停车场");
+            // 降级：经纬度 1°≈111km，计算 bounding-box 查 DB
+            // 50km ≈ 0.45°
+            double lat = latitude.doubleValue();
+            double lon = longitude.doubleValue();
+            double latDiff = (radius / 1000.0) / 111.0;
+            double lonDiff = (radius / 1000.0) / (111.0 * Math.cos(Math.toRadians(lat)));
+            QueryWrapper<ParkingLot> wrapper = new QueryWrapper<ParkingLot>()
+                    .between("latitude", lat - latDiff, lat + latDiff)
+                    .between("longitude", lon - lonDiff, lon + lonDiff)
+                    .last("LIMIT " + PARKING_DEFAULT_NUMBER);
+            List<ParkingLot> parkingLots = parkingMapper.selectList(wrapper);
+            return Result.ok(parkingLots);
         }
 
-
-        //获取Geo元素中的id
         List<Long> ids = results.getContent().stream()
                 .map(geoResult -> Long.valueOf(geoResult.getContent().getName()))
                 .toList();
 
-        List<ParkingLot> parkingLots = parkingMapper.selectByIds(ids);
-        return Result.ok(parkingLots);
+        if (ids.isEmpty()) {
+            throw new BusinessException(ResultConstant.BAD_REQUEST, "附近无停车场");
+        }
+
+        List<ParkingLot> parkingLots = new ArrayList<>();
+        List<ParkingLotVO> parkingLotVOs;
+
+        // 2.批量查缓存：Hash（静态）+ string（可用车位）
+        //    全部未命中 → DB 查全部并回填
+        //    部分未命中 → 只查缺失的 ids 并回填
+        //    全部命中   → 跳过
+        try {
+            List<String> keys = ids.stream()
+                    .map(id -> PARKING_INFO + id)
+                    .toList();
+
+            List<String> jsonList = stringRedisTemplate.opsForValue().multiGet(keys);
+            List<Object> AvaList = stringRedisTemplate.opsForHash().multiGet(PARKING_AVAILABLE_SPOTS, new ArrayList<>(ids));
+
+            long missCount = jsonList.stream().filter(Objects::isNull).count();
+
+            if (missCount == ids.size()) {
+                List<ParkingLot> lotList = parkingMapper.selectByIds(ids);
+
+                // DB 返回顺序不一定与 ids 一致，按 id 建立映射
+                Map<Long, ParkingLot> lotMap = new HashMap<>();
+                for (ParkingLot lot : lotList) {
+                    lotMap.put(lot.getId(), lot);
+                }
+
+                Map<String, String> cacheMap = new HashMap<>();
+                Map<String, String> spotsMap = new HashMap<>();
+
+                for (int i = 0; i < ids.size(); i++) {
+                    Long id = ids.get(i);
+                    ParkingLot lot = lotMap.get(id);
+                    if (lot == null) continue;
+
+                    ParkingLotCache cache = BeanUtil.copyProperties(lot, ParkingLotCache.class);
+                    String json = JSONUtil.toJsonStr(cache);
+
+                    jsonList.set(i, json);
+                    AvaList.set(i, lot.getAvailableSpots());
+
+                    cacheMap.put(PARKING_INFO + id, json);
+                    spotsMap.put(String.valueOf(id), String.valueOf(lot.getAvailableSpots()));
+                }
+
+                stringRedisTemplate.opsForValue().multiSet(cacheMap);
+                stringRedisTemplate.opsForHash().putAll(PARKING_AVAILABLE_SPOTS, spotsMap);
+
+            } else if (missCount > 0) {
+                List<Integer> missIndices = new ArrayList<>();
+                for (int i = 0; i < jsonList.size(); i++) {
+                    if (jsonList.get(i) == null) {
+                        missIndices.add(i);
+                    }
+                }
+                List<Long> missIds = missIndices.stream().map(ids::get).toList();
+
+                List<ParkingLot> missLots = parkingMapper.selectByIds(missIds);
+
+                Map<Long, ParkingLot> missLotMap = new HashMap<>();
+                for (ParkingLot lot : missLots) {
+                    missLotMap.put(lot.getId(), lot);
+                }
+
+                Map<String, String> cacheMap = new HashMap<>();
+                Map<String, String> spotsMap = new HashMap<>();
+
+                for (int index : missIndices) {
+                    Long id = ids.get(index);
+                    ParkingLot lot = missLotMap.get(id);
+                    if (lot == null) continue;
+
+                    ParkingLotCache cache = BeanUtil.copyProperties(lot, ParkingLotCache.class);
+                    String json = JSONUtil.toJsonStr(cache);
+
+                    jsonList.set(index, json);
+                    AvaList.set(index, lot.getAvailableSpots());
+
+                    cacheMap.put(PARKING_INFO + id, json);
+                    spotsMap.put(String.valueOf(id), String.valueOf(lot.getAvailableSpots()));
+                }
+
+                stringRedisTemplate.opsForValue().multiSet(cacheMap);
+                stringRedisTemplate.opsForHash().putAll(PARKING_AVAILABLE_SPOTS, spotsMap);
+            }
+
+            // 3.合并可用车位 → 转为 VO
+            for (int i = 0; i < jsonList.size(); i++) {
+                ParkingLot parkingLot = JSONUtil.toBean((jsonList.get(i)), ParkingLot.class);
+                parkingLot.setAvailableSpots((Integer) AvaList.get(i));
+                parkingLots.add(parkingLot);
+            }
+            parkingLotVOs = BeanUtil.copyToList(parkingLots, ParkingLotVO.class);
+
+        } catch (Exception e) {
+            log.info("从redis获取停车场详细信息失败，回查数据库");
+            // DB 降级：查询结果无序，需计算距离并重新排序
+            List<ParkingLot> ParkingLots = parkingMapper.selectByIds(ids);
+            parkingLotVOs = BeanUtil.copyToList(ParkingLots, ParkingLotVO.class);
+            parkingLotVOs.forEach(vo -> {
+                double dis = DistanceUtil.haversine(
+                        latitude.doubleValue(), longitude.doubleValue(),
+                        vo.getLatitude().doubleValue(), vo.getLongitude().doubleValue());
+                vo.setDistance(String.format("%.2f km", dis));
+            });
+            parkingLotVOs.sort(Comparator.comparingDouble(vo ->
+                    Double.parseDouble(vo.getDistance().replace(" km", ""))));
+        }
+
+        // 4.覆盖 Geo 返回的距离到 VO
+        for (int i = 0; i < parkingLotVOs.size() && i < results.getContent().size(); i++) {
+            ParkingLotVO parkingLotVO = parkingLotVOs.get(i);
+            Distance distance = results.getContent().get(i).getDistance();
+            double dis = distance.getValue() / 1000.0;
+            parkingLotVO.setDistance(String.format("%.2f km", dis));
+        }
+        return Result.ok(parkingLotVOs);
 
     }
 
 
     /**
-     * 获取停车场信息
+     * 获取停车场信息(本地缓存防高并发)
      *
      * @param id
      * @return
@@ -86,31 +237,166 @@ public class ParkingServiceImpl implements ParkingService {
     @Override
     public Result parkingInfo(Long id) {
         log.info("获取停车场信息:{}", id);
-        String s = null;
+
+        // 0.Caffeine 本地缓存兜底（防恶意请求穿透到 DB）
+        ParkingLotVO cached = localCache.getIfPresent(id);
+        if (cached != null) {
+            if (cached == NULL_MARKER) {
+                throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在");
+            }
+            return Result.ok(cached);
+        }
+
+        // 1.Redis → Cache → VO
         try {
-            s = stringRedisTemplate.opsForValue().get(PARKING_INFO + id);
+            String json = stringRedisTemplate.opsForValue().get(PARKING_INFO + id);
+            if (json != null && !json.isEmpty()) {
+                ParkingLotCache cache = JSONUtil.toBean(json, ParkingLotCache.class);
+                Object obj = stringRedisTemplate.opsForHash().get(PARKING_AVAILABLE_SPOTS, String.valueOf(id));
+                Integer avaSpots = obj != null ? Integer.valueOf(obj.toString()) : null;
+                ParkingLotVO vo = BeanUtil.copyProperties(cache, ParkingLotVO.class);
+                vo.setAvailableSpots(avaSpots);
+                localCache.put(id, vo);
+                return Result.ok(vo);
+            }
         } catch (Exception e) {
             log.error("redis服务器异常!");
         }
-        if (s != null && s.isEmpty()) {
-            throw new RuntimeException("停车场不存在");
-        }
-        ParkingLot parkingLot = parkingMapper.selectById(id);
 
-        return Result.ok(parkingLot);
+        // 2.DB 降级（缓存穿透 / Redis 不可用）
+        ParkingLot parkingLot = parkingMapper.selectById(id);
+        if (parkingLot == null) {
+            localCache.put(id, NULL_MARKER);
+            throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在");
+        }
+        ParkingLotVO vo = BeanUtil.copyProperties(parkingLot, ParkingLotVO.class);
+        vo.setAvailableSpots(parkingLot.getAvailableSpots());
+        localCache.put(id, vo);
+        return Result.ok(vo);
     }
 
     /**
-     * 获取停车场车位信息
+     * 获取停车场车位列表
      *
-     * @param id
+     * @param LotId
      * @return
      */
     @Override
-    public Result parkingSpots(Long id) {
-        //List<ParkingSpot> parkingSpots = parkingMapper.selectSpotsByLotId(id);
-        return Result.ok();
+    public Result parkingSpots(Long LotId) {
+
+        List<SpotVO> spots;
+
+        try {
+            // 空值标记拦截（String key，5min TTL，防穿透）
+            String nullKey = "parking:spot:null:" + LotId;
+            if (stringRedisTemplate.hasKey(nullKey)) {
+                throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂未开放");
+            }
+
+            Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(LOT_SPOTS + LotId);
+
+            if (entries.isEmpty()) {
+                // 缓存未命中 → 加锁重建（最多 3 次尝试）
+                RLock lock = redissonClient.getLock("lock:parking:spot:" + LotId);
+                boolean locked = false;
+                for (int i = 0; i < 3; i++) {
+                    locked = lock.tryLock(500, TimeUnit.MILLISECONDS);
+                    if (locked) break;
+                    if (i < 2) {
+                        TimeUnit.MILLISECONDS.sleep(100);
+                    }
+                }
+                if (!locked) {
+                    throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+                }
+                try {
+                    // 双检：获取锁后其他线程可能已完成重建
+                    entries = stringRedisTemplate.opsForHash().entries(LOT_SPOTS + LotId);
+                    if (!entries.isEmpty()) {
+                        spots = buildSpots(entries, LotId);
+                        return Result.ok(spots);
+                    }
+
+                    List<ParkingSpot> lotSpots = parkingSpotMapper.selectList(
+                            new QueryWrapper<ParkingSpot>()
+                                    .eq("lot_id", LotId)
+                                    .orderByAsc("seq"));
+
+                    if (lotSpots.isEmpty()) {
+                        stringRedisTemplate.opsForValue().set(nullKey, "", NULL_TTL, TimeUnit.MINUTES);
+                        throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂未开放");
+                    }
+
+                    // 回填 Hash（12h TTL）+ 初始化 Bitmap（全0，无需 TTL）
+                    Map<String, String> spotMap = new HashMap<>();
+                    for (ParkingSpot spot : lotSpots) {
+                        SpotVO vo = new SpotVO(spot.getId(), spot.getSpotNumber(), spot.getType(), 0);
+                        spotMap.put(String.valueOf(spot.getSeq()), JSONUtil.toJsonStr(vo));
+                    }
+                    stringRedisTemplate.opsForHash().putAll(LOT_SPOTS + LotId, spotMap);
+                    stringRedisTemplate.expire(LOT_SPOTS + LotId, 12, TimeUnit.HOURS);
+
+                    int bitCount = lotSpots.size();
+                    byte[] bitmap = new byte[(bitCount + 7) / 8];
+                    stringRedisTemplate.opsForValue().set(
+                            LOT_SPOTS_BITMAP + LotId,
+                            new String(bitmap, StandardCharsets.ISO_8859_1));
+
+                    spots = buildSpots(new HashMap<>(spotMap), LotId);
+                    return Result.ok(spots);
+
+                } finally {
+                    lock.unlock();
+                }
+            }
+
+            spots = buildSpots(entries, LotId);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Redis服务异常!", e);
+            // DB 降级
+            List<ParkingSpot> lotSpots = parkingSpotMapper.selectList(
+                    new QueryWrapper<ParkingSpot>()
+                            .eq("lot_id", LotId)
+                            .orderByAsc("seq"));
+            if (lotSpots.isEmpty()) {
+                throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂无车位");
+            }
+            spots = lotSpots.stream()
+                    .map(s -> new SpotVO(s.getId(), s.getSpotNumber(), s.getType(), 0))
+                    .toList();
+        }
+
+        return Result.ok(spots);
     }
 
+    /**
+     * 合并 Hash + Bitmap → SpotVO 列表（bitmap 不存在时自动初始化）
+     */
+    private List<SpotVO> buildSpots(Map<Object, Object> entries, Long LotId) {
+        String raw = stringRedisTemplate.opsForValue().get(LOT_SPOTS_BITMAP + LotId);
 
+        if (raw == null) {
+            int bitCount = entries.size();
+            byte[] bytes = new byte[(bitCount + 7) / 8];
+            raw = new String(bytes, StandardCharsets.ISO_8859_1);
+            stringRedisTemplate.opsForValue().set(LOT_SPOTS_BITMAP + LotId, raw);
+        }
+
+        byte[] bitmap = raw.getBytes(StandardCharsets.ISO_8859_1);
+        return entries.entrySet().stream()
+                .sorted(Comparator.comparing(e -> Long.valueOf(e.getKey().toString())))
+                .map(e -> {
+                    int seq = Integer.parseInt(e.getKey().toString());
+                    SpotVO vo = JSONUtil.toBean(e.getValue().toString(), SpotVO.class);
+                    // 按 seq 从 Bitmap 中读取该车位状态（0 空闲 / 1 占用）
+                    boolean occupied = seq / 8 < bitmap.length
+                            && (bitmap[seq / 8] & (1 << (7 - seq % 8))) != 0;
+                    vo.setStatus(occupied ? 1 : 0);
+                    return vo;
+                })
+                .toList();
+    }
 }

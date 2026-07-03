@@ -6,7 +6,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xigeandwillian.parkingsystem.client.dto.user.VehicleDTO;
 import com.xigeandwillian.parkingsystem.client.mapper.VehicleMapper;
-import com.xigeandwillian.parkingsystem.client.service.Service.VehicleService;
+import com.xigeandwillian.parkingsystem.client.service.service.VehicleService;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Vehicle;
 import com.xigeandwillian.parkingsystem.common.result.Result;
@@ -43,7 +43,7 @@ public class VehicleServiceImpl implements VehicleService {
     @Override
     public Result vehiclesInfo() {
         long userId = UserHolder.get();
-        String cacheKey = CaffeineConstant.CACHE_KEY + userId;
+        String cacheKey = CaffeineConstant.VEHICLE_KEY + userId;
         List<Vehicle> vehicles = vehicleCache.get(cacheKey, k -> {
             log.info("车辆缓存未命中，查询数据库 userId: {}", userId);
             return vehicleMapper.selectList(Wrappers.<Vehicle>lambdaQuery()
@@ -66,7 +66,7 @@ public class VehicleServiceImpl implements VehicleService {
         BeanUtil.copyProperties(vehicleDTO, vehicle);
         vehicle.setUserId(UserHolder.get());
         vehicleMapper.insert(vehicle);
-        vehicleCache.invalidate(CaffeineConstant.CACHE_KEY + vehicle.getUserId());
+        vehicleCache.invalidate(CaffeineConstant.VEHICLE_KEY + vehicle.getUserId());
         log.info("新增车辆成功，已清除用户 {} 的车辆缓存", vehicle.getUserId());
         return Result.ok();
     }
@@ -79,11 +79,27 @@ public class VehicleServiceImpl implements VehicleService {
      */
     @Override
     public Result deleteVehicle(Long id) {
-        // 删除车辆
         vehicleMapper.deleteById(id);
-        // 清除缓存
-        vehicleCache.invalidate(CaffeineConstant.CACHE_KEY + UserHolder.get());
-        // 返回结果
+        vehicleCache.invalidate(CaffeineConstant.VEHICLE_KEY + UserHolder.get());
         return Result.ok();
     }
+
+    /**
+     * 更新车辆
+     *
+     * @param vehicleDTO
+     * @param id
+     * @return
+     */
+    @Override
+    public Result updateVehicle(VehicleDTO vehicleDTO, Long id) {
+        Vehicle vehicle = new Vehicle();
+        BeanUtil.copyProperties(vehicleDTO, vehicle);
+        vehicle.setId(id);
+        vehicleMapper.updateById(vehicle);
+        vehicleCache.invalidate(CaffeineConstant.VEHICLE_KEY + UserHolder.get());
+        return Result.ok();
+    }
+
+
 }

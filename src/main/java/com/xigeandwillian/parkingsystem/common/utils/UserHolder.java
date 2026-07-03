@@ -1,11 +1,8 @@
 package com.xigeandwillian.parkingsystem.common.utils;
 
-import com.xigeandwillian.parkingsystem.client.vo.user.UserVO;
-
 /**
  * @author willian
  * @description: ThreadLocal
- * @date 2021/12/27
  */
 public class UserHolder {
     private static final ThreadLocal<Long> t = new ThreadLocal<>();
@@ -14,7 +11,7 @@ public class UserHolder {
         t.set(userId);
     }
 
-    public static long get() {
+    public static Long get() {
         return t.get();
     }
 

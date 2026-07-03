@@ -1,12 +1,17 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
-import com.xigeandwillian.parkingsystem.client.service.Service.ParkingService;
+import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 
+
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/parking-lots")
@@ -22,10 +27,12 @@ public class ParkingController {
      * @return
      */
     @GetMapping("/nearby")
-    public Result parkingList(@RequestParam BigDecimal longitude,
-                              @RequestParam BigDecimal latitude
+    public Result parkingList(@RequestParam @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude,
+                              @RequestParam @DecimalMin("-90") @DecimalMax("90") BigDecimal latitude,
+                              @RequestParam long radius
     ) {
-        return parkingService.parkingList(longitude, latitude);
+        log.info("获取附近停车场列表");
+        return parkingService.parkingList(longitude, latitude, radius);
     }
 
     /**
@@ -36,6 +43,7 @@ public class ParkingController {
      */
     @GetMapping("/{id}")
     public Result parkingInfo(@PathVariable Long id) {
+        log.info("获取停车场详情");
         return parkingService.parkingInfo(id);
     }
 
@@ -47,6 +55,7 @@ public class ParkingController {
      */
     @GetMapping("/{id}/spots")
     public Result parkingSpots(@PathVariable Long id) {
+        log.info("获取停车场车位信息");
         return parkingService.parkingSpots(id);
     }
 

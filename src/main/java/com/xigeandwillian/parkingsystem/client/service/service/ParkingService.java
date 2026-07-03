@@ -1,11 +1,11 @@
-package com.xigeandwillian.parkingsystem.client.service.Service;
+package com.xigeandwillian.parkingsystem.client.service.service;
 
 import com.xigeandwillian.parkingsystem.common.result.Result;
 
 import java.math.BigDecimal;
 
 public interface ParkingService {
-    Result parkingList(BigDecimal longitude, BigDecimal latitude);
+    Result parkingList(BigDecimal longitude, BigDecimal latitude, long radius);
 
     Result parkingInfo(Long id);
 
