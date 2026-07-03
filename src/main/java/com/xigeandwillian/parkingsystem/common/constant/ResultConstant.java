@@ -11,4 +11,6 @@ public class ResultConstant {
     public static final int FORBIDDEN = 403;
     /** 服务器内部错误 */
     public static final int INTERNAL_SERVER_ERROR = 500;
+    /** 系统内部错误 */
+    public static final int SYSTEM_ERROR = 500;
 }

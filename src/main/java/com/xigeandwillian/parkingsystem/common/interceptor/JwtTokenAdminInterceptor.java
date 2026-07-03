@@ -1,7 +1,9 @@
 package com.xigeandwillian.parkingsystem.common.interceptor;
 
 import com.xigeandwillian.parkingsystem.common.constant.HttpConstant;
+import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
+import com.xigeandwillian.parkingsystem.common.service.service.RedisService;
 import com.xigeandwillian.parkingsystem.common.utils.AdminHolder;
 import com.xigeandwillian.parkingsystem.common.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +20,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class JwtTokenAdminInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
+    private final RedisService redisService;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -38,7 +41,17 @@ public class JwtTokenAdminInterceptor implements HandlerInterceptor {
 
         try {
             log.info("校验token:{}", token);
-            AdminHolder.save(Long.valueOf(jwtUtil.getSubject(token)));
+            Long adminId = Long.valueOf(jwtUtil.getSubject(token));
+
+            Boolean sessionExists = redisService.hasKey(
+                    RedisConstant.Auth.ADMIN_SESSION_PREFIX + adminId);
+            if (sessionExists == null || !sessionExists) {
+                log.warn("管理员session不存在，需重新登录: adminId={}", adminId);
+                response.setStatus(ResultConstant.UNAUTHORIZED);
+                return false;
+            }
+
+            AdminHolder.save(adminId);
             return true;
         } catch (Exception e) {
             response.setStatus(ResultConstant.UNAUTHORIZED);
