@@ -24,6 +24,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
 
         // 用户拦截器(拦截公共接口外所有)
         registry.addInterceptor(jwtTokenUserInterceptor)
+                .addPathPatterns(("/wallet/**"))
                 .addPathPatterns("/vehicles/**")
                 .addPathPatterns("/user/**")
                 .addPathPatterns("/coupons/**")
