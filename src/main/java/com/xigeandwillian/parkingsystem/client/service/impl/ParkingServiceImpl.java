@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.*;
+
 import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
 
@@ -273,13 +274,8 @@ public class ParkingServiceImpl implements ParkingService {
         CacheResult<List<Integer>> statusResult = parkingDataProvider.getSpotStatusList(id);
         if (statusResult.isHit()) {
             List<Integer> statusList = statusResult.getData();
-            if (statusList.size() == spots.size()) {
-                for (int i = 0; i < spots.size(); i++) {
-                    spots.get(i).setStatus(statusList.get(i));
-                }
-            } else {
-                log.warn("Bitmap长度与列表不一致, lotId={}, statusSize={}, spotSize={}",
-                        id, statusList.size(), spots.size());
+            for (int i = 0; i < Math.min(statusList.size(), spots.size()); i++) {
+                spots.get(i).setStatus(statusList.get(i));
             }
         }
         return Result.ok(spots);

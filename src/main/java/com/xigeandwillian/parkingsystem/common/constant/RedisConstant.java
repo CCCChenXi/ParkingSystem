@@ -83,12 +83,6 @@ public class RedisConstant {
     }
 
 
-    public static final class Spots {
-        /*停车场车位*/
-        public static final String LOT_SPOTS = "parking:spot:";//+Lot_id
-        /*停车场车位状态Bitmap*/
-        public static final String LOT_SPOTS_BITMAP = "parking:spot:bitmap:";
-    }
 
     public static class Coupon {
         /** Redis key: 可领取优惠券缓存 */

@@ -3,9 +3,10 @@ package com.xigeandwillian.parkingsystem.common.config;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponAvailableVO;
+import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
-import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
+import com.xigeandwillian.parkingsystem.client.vo.wallet.WalletVO;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Vehicle;
 import org.springframework.context.annotation.Bean;
@@ -74,4 +75,13 @@ public class CaffeineCacheConfig {
                 .expireAfterWrite(CaffeineConstant.PARKING_SPOT_EXPIRE_MINUTES, TimeUnit.MINUTES)
                 .build();
     }
+
+    @Bean("balanceCache")
+    public Cache<String, WalletVO> balanceCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(CaffeineConstant.WALLET_MAXIMUM_SIZE)
+                .expireAfterWrite(CaffeineConstant.WALLET_EXPIRE_SECONDS, TimeUnit.SECONDS)
+                .build();
+    }
+
 }

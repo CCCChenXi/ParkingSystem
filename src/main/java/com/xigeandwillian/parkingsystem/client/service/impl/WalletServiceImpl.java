@@ -1,21 +1,31 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.xigeandwillian.parkingsystem.client.mapper.WalletMapper;
+import com.xigeandwillian.parkingsystem.client.mapper.WalletLogMapper;
 import com.xigeandwillian.parkingsystem.client.service.service.WalletService;
 import com.xigeandwillian.parkingsystem.client.vo.wallet.WalletLogVO;
+import com.xigeandwillian.parkingsystem.client.vo.wallet.WalletVO;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
+import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Wallet;
+import com.xigeandwillian.parkingsystem.common.entity.WalletLog;
+import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
+import com.xigeandwillian.parkingsystem.common.mapper.WalletMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
+import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -24,6 +34,8 @@ public class WalletServiceImpl implements WalletService {
 
     private final WalletMapper walletMapper;
 
+    private final WalletLogMapper walletLogMapper;
+
     /*
       钱包信息属于用户个人隐私
       1.因为属于个人信息 不宜缓存到redis
@@ -31,15 +43,15 @@ public class WalletServiceImpl implements WalletService {
       3.采用Caffeine本地短时缓存策略->降低短期数据库请求次数
      */
 
-    @Resource(name = "walletBalanceCache")
-    private Cache<String, BigDecimal> balanceCache;
+    @Resource(name = "balanceCache")
+    private Cache<String, WalletVO> balanceCache;
 
     /*
      钱包流水属于用户个人隐私
      */
     private final Cache<String, List<WalletLogVO>> walletLogCache = Caffeine.newBuilder()
-            .maximumSize(MAXIMUM_SIZE)
-            .expireAfterWrite(EXPIRE_TIME, TimeUnit.SECONDS)
+            .maximumSize(CaffeineConstant.WALLET_MAXIMUM_SIZE)
+            .expireAfterWrite(CaffeineConstant.WALLET_EXPIRE_SECONDS, TimeUnit.SECONDS)
             .build();
 
 
@@ -52,12 +64,14 @@ public class WalletServiceImpl implements WalletService {
     @Override
     public Result info() {
         Long userId = UserHolder.get();
-        BigDecimal balance = balanceCache.get(CaffeineConstant.WALLET_KEY + userId, k -> {
+        WalletVO walletVO = balanceCache.get(CaffeineConstant.WALLET_KEY + userId, k -> {
             log.info("钱包信息缓存未命中，查询数据库 userId: {}", userId);
             Wallet wallet = walletMapper.selectOne(new QueryWrapper<Wallet>().eq("user_id", userId));
-            return wallet != null ? wallet.getBalance() : BigDecimal.ZERO;
+            return wallet != null
+                    ? WalletVO.builder().id(wallet.getId()).balance(wallet.getBalance()).build()
+                    : WalletVO.builder().id(0L).balance(BigDecimal.ZERO).build();
         });
-        return Result.ok(balance);
+        return Result.ok(walletVO);
     }
 
 
@@ -122,7 +136,11 @@ public class WalletServiceImpl implements WalletService {
         //添加本地缓存
         Wallet wallet = walletMapper.selectOne(
                 new QueryWrapper<Wallet>().eq("user_id", userId));
-        balanceCache.put(CaffeineConstant.WALLET_KEY + userId, wallet.getBalance());
+        WalletVO walletVO = WalletVO.builder()
+                .id(wallet.getId())
+                .balance(wallet.getBalance())
+                .build();
+        balanceCache.put(CaffeineConstant.WALLET_KEY + userId, walletVO);
 
         //记录充值流水
         WalletLog log = new WalletLog();
@@ -153,6 +171,9 @@ public class WalletServiceImpl implements WalletService {
         walletLogCache.put(logKey, logVOs);
 
         //返回余额
-        return Result.ok(wallet.getBalance());
+        return Result.ok(WalletVO.builder()
+                .id(wallet.getId())
+                .balance(wallet.getBalance())
+                .build());
     }
 }

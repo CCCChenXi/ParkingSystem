@@ -14,10 +14,9 @@ import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -102,10 +101,10 @@ public class ParkingDataProvider {
 
     private CacheResult<List<Integer>> getSpotStatusFromRedis(Long lotId) {
         try {
-            String raw = stringRedisTemplate.opsForValue()
-                    .get(RedisConstant.Parking.PARKING_SPOT_STATUS + lotId);
-            if (raw == null) return CacheResult.miss();
-            byte[] bitmap = raw.getBytes(StandardCharsets.ISO_8859_1);
+            byte[] bitmap = stringRedisTemplate.execute((RedisCallback<byte[]>) conn ->
+                    conn.stringCommands().get(
+                            (RedisConstant.Parking.PARKING_SPOT_STATUS + lotId).getBytes()));
+            if (bitmap == null) return CacheResult.miss();
             List<Integer> list = new ArrayList<>(bitmap.length * 8);
             for (int i = 0; i < bitmap.length * 8; i++) {
                 boolean occupied = (bitmap[i / 8] & (1 << (7 - i % 8))) != 0;
@@ -127,9 +126,12 @@ public class ParkingDataProvider {
                     bitmap[i / 8] |= (byte) (1 << (7 - i % 8));
                 }
             }
-            stringRedisTemplate.opsForValue().set(
-                    RedisConstant.Parking.PARKING_SPOT_STATUS + lotId,
-                    new String(bitmap, StandardCharsets.ISO_8859_1));
+            stringRedisTemplate.execute((RedisCallback<Boolean>) conn -> {
+                conn.stringCommands().set(
+                        (RedisConstant.Parking.PARKING_SPOT_STATUS + lotId).getBytes(),
+                        bitmap);
+                return true;
+            });
         } catch (Exception e) {
             log.warn("车位状态Bitmap写入失败: lotId={}", lotId, e);
         }

@@ -22,6 +22,7 @@ public class CaffeineConstant {
 
     public static final String VEHICLE_KEY = "cacheKey:";
     public static final String WALLET_KEY = "walletKey:";
+    public static final String WALLET_LOG_KEY = "walletLogKey:";
     public static final String COUPON_AVAILABLE_KEY = "coupon:available";
 
 }

@@ -292,7 +292,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
                 throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在，新增车位失败");
             }
 
-            Integer seq=lot.getTotalSpots();
+            long seq = lot.getTotalSpots();
 
             // 2. 组装车位列表
             List<ParkingSpot> spots = spotInsertDTO.getSpotNumbers().stream().map(number -> {

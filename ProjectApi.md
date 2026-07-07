@@ -160,7 +160,7 @@ GET /api/parking-lots/{id}/spots
 | `spotNumber` | 编号 A01 |
 | `type` | 0 = 标准 1 = 大型 2 = 充电桩 |
 | `status` | 0 = 空闲 1 = 占用（来自 Redis `GETBIT parking:spots:{lotId} {spotId}`） |
-| `seq` | 停车场内第几个车位（从0开始） |
+| `seq` | 车位序号（车位网格中的排列顺序） |
 
 > 后端实现：查 DB `parking_spot` 元数据 + Redis Bitmap 组装返回
 
@@ -302,8 +302,15 @@ POST /api/orders
 
 **Request**
 ```json
-{ "lotId": 1, "spotId": 100, "seq": 1, "plateNumber": "粤B·88888", "couponId": 4 }
+{ "lotId": 1, "spotId": 100, "seq": 1, "plateNumber": "粤B·88888" }
 ```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `lotId` | number | 停车场 ID |
+| `spotId` | number | 车位 ID（Bitmap offset） |
+| `seq` | number | 车位序号（车位网格中的排列顺序） |
+| `plateNumber` | string | 车牌号 |
 
 **后端逻辑**
 
@@ -383,6 +390,45 @@ GET /api/orders/{id}
 }
 ```
 
+#### 直接入场（分布式锁）
+```
+POST /api/orders/direct
+```
+
+**Request**
+```json
+{ "lotId": 1, "spotId": 100, "seq": 1, "plateNumber": "粤B·88888" }
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `lotId` | number | 停车场 ID |
+| `spotId` | number | 车位 ID（Bitmap offset） |
+| `seq` | number | 车位序号（车位网格中的排列顺序） |
+| `plateNumber` | string | 车牌号 |
+
+**后端逻辑**
+
+1. `SET lock:direct:{lotId}:{spotId} {userId} NX EX 900` — 获取分布式锁（15min TTL）
+2. `GETBIT parking:spots:{lotId} {spotId}` — 检查是否空闲
+3. `SETBIT parking:spots:{lotId} {spotId} 1` — 标记占用
+4. 创建订单（status=1、startTime=now()）、扣减 availableSpots
+5. 发送 RabbitMQ `order.enter` → 生成消息通知
+6. Lua 脚本释放锁
+
+**Response `data`**
+```json
+{
+  "id": 1,
+  "orderNo": "ORD20260623001",
+  "status": 1,
+  "startTime": "2026-06-23 14:30:00",
+  "createTime": "2026-06-23 14:30:00"
+}
+```
+
+---
+
 #### 确认入场
 ```
 PUT /api/orders/{id}/enter
@@ -405,6 +451,18 @@ PUT /api/orders/{id}/enter
 PUT /api/orders/{id}/settle
 ```
 
+**Request**
+```json
+{ "lotId": 1, "spotId": 100, "seq": 5, "couponId": 5 }
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `lotId` | number | 是 | 停车场 ID |
+| `spotId` | number | 是 | 车位 ID（Bitmap offset） |
+| `seq` | number | 是 | 车位序号 |
+| `couponId` | number | 否 | 使用的优惠券（user_coupon.id） |
+
 **计费公式**
 ```
 duration   = ceil((exitMillis - enterMillis) / 3600000)
@@ -415,9 +473,10 @@ payable    = amount - discount
 **后端逻辑**
 1. 订单 status 1 → 2
 2. 计算费用、记录 `endTime = now()`
-3. `SETBIT parking:spots:{lotId} {spotId} 0` — 释放车位
-4. 扣减钱包余额
-5. 发送 RabbitMQ `order.settle`
+3. 若请求中携带 `couponId`：校验优惠券归属当前用户、未使用、未过期、`amount >= minAmount`；通过后计算 `discount`，写入 `parking_order.discount`；更新 `user_coupon.status = 1`，记录 `use_time`
+4. `SETBIT parking:spots:{lotId} {spotId} 0` — 释放车位
+5. 扣减钱包余额
+6. 发送 RabbitMQ `order.settle`
 
 **Response `data`**
 ```json
@@ -502,160 +561,28 @@ PUT /api/messages/read-all
 
 ### 2.5 优惠券
 
-#### 可领取优惠券列表（游标分页）
+#### 可领取优惠券列表
 ```
 GET /api/coupons/available
 ```
 
-前端无限滚动，每次 10 条。不包含动态字段（remainStock/stock），详情需通过详情接口获取。
-
-**Request Params**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `lastTimestamp` | Long | 否 | 上次最后一条的 `startTime` 时间戳（毫秒），首次不传 |
-| `lastId` | Long | 否 | 上次最后一条的 `id`，首次不传 |
-| `pageSize` | Integer | 否 | 默认 10 |
-
-**排序** `start_time DESC, id DESC`
-
-**游标条件**（`lastTimestamp` 和 `lastId` 同时传才生效）：
-```sql
-AND (start_time < FROM_UNIXTIME(#{lastTimestamp}/1000)
-  OR (start_time = FROM_UNIXTIME(#{lastTimestamp}/1000) AND id < #{lastId}))
-```
-
 **Response `data`**
 ```json
-{
-  "list": [
-    {
-      "id": 1,
-      "name": "新用户专享",
-      "description": "满10减5",
-      "discountAmount": 5,
-      "minAmount": 10,
-      "type": 0,
-      "claimed": false,
-      "startTime": "2026-06-01 00:00:00",
-      "endTime": "2026-12-31 23:59:59"
-    }
-  ],
-  "nextTimestamp": 1780300800000,
-  "nextId": 5,
-  "hasMore": true
-}
+[
+  {
+    "id": 1,
+    "name": "新用户专享",
+    "description": "满10减5",
+    "discountAmount": 5,
+    "minAmount": 10,
+    "type": 0,
+    "stock": 100,
+    "remainStock": 88,
+    "startTime": "2026-06-01",
+    "endTime": "2026-12-31"
+  }
+]
 ```
-
-| 字段 | 说明 |
-|------|------|
-| `list` | 本页 10 条数据，不含 `stock`/`remainStock`，含 `claimed` |
-| `claimed` | 当前用户是否已领取（`false`=未领取 `true`=已领取） |
-| `nextTimestamp` | 下次请求的游标时间戳 |
-| `nextId` | 下次请求的游标 ID |
-| `hasMore` | 是否还有下一页 |
-
-#### 我的优惠券列表（游标分页）
-```
-GET /api/coupons?scope=mine
-```
-
-游标在 `user_coupon.create_time DESC, user_coupon.id DESC`。
-
-**Request Params**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `lastTimestamp` | Long | 否 | 上次最后一条的 `create_time` 时间戳（毫秒），首次不传 |
-| `lastId` | Long | 否 | 上次最后一条 `user_coupon.id`，首次不传 |
-| `pageSize` | Integer | 否 | 默认 10 |
-| `status` | Integer | 否 | 筛选状态：0=未使用 1=已使用 2=已过期 |
-| `keyword` | String | 否 | 模糊匹配 `coupon.name` |
-
-**Response `data`**
-```json
-{
-  "list": [
-    {
-      "id": 4,
-      "couponId": 1,
-      "name": "满20减5",
-      "description": "停车优惠",
-      "discountAmount": 5,
-      "minAmount": 20,
-      "type": 0,
-      "status": 0,
-      "createTime": "2026-07-01 12:00:00",
-      "startTime": "2026-06-01 00:00:00",
-      "endTime": "2026-07-01 23:59:59"
-    }
-  ],
-  "nextTimestamp": 1780300800000,
-  "nextId": 4,
-  "hasMore": true
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `list` | 本页数据，不含 `stock`/`remainStock`，含 `couponId` |
-| `couponId` | 真实优惠券 ID（前端详情用） |
-| `status` | 0=未使用 1=已使用 2=已过期 |
-| `createTime` | 用户领取时间（用于游标） |
-
-#### 可领取优惠券详情
-```
-GET /api/coupons/available/{id}/detail
-```
-
-返回完整字段，包含动态库存信息 + 领取状态。从可领取列表点击卡片时调用。
-
-**Response `data`**
-```json
-{
-  "id": 1,
-  "name": "新用户停车专享",
-  "description": "首次停车立减20元",
-  "discountAmount": 20,
-  "minAmount": 30,
-  "type": 0,
-  "stock": 100,
-  "remainStock": 88,
-  "claim": false,
-  "startTime": "2026-06-01 00:00:00",
-  "endTime": "2026-12-31 23:59:59"
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `claim` | 当前用户是否已领取 |
-
-#### 我的优惠券详情
-```
-GET /api/coupons/mine/{id}/detail
-```
-
-`{id}` 为真实优惠券 ID。返回基础信息 + 用户维度的使用状态，不含库存字段。
-
-**Response `data`**
-```json
-{
-  "id": 1,
-  "name": "新用户停车专享",
-  "description": "首次停车立减20元",
-  "discountAmount": 20,
-  "minAmount": 30,
-  "type": 0,
-  "status": 0,
-  "startTime": "2026-06-01 00:00:00",
-  "endTime": "2026-12-31 23:59:59"
-}
-```
-
-| 字段 | 说明 |
-|------|------|
-| `status` | 0=未使用 1=已使用 2=已过期 |
 
 #### 领取普通优惠券
 ```
@@ -667,11 +594,19 @@ POST /api/coupons/claim/{id}
 { "code": 200, "message": "领取成功" }
 ```
 
-**后端逻辑：** 检查库存 > 0、未重复领取 → `remainStock - 1` → 插入 `user_coupon` 表（`status=0`）。
-
 #### 秒杀优惠券
 ```
 POST /api/coupons/flash/{id}
+```
+
+**后端逻辑（Lua 脚本保证原子性）**
+```lua
+local stock = redis.call('DECR', 'coupon:flash:' .. KEYS[1])
+if stock < 0 then
+  redis.call('INCR', 'coupon:flash:' .. KEYS[1])
+  return -1
+end
+return stock
 ```
 
 **Response** `data` 为空，仅返回统一信封：
@@ -679,7 +614,32 @@ POST /api/coupons/flash/{id}
 { "code": 200, "message": "秒杀成功" }
 ```
 
-**后端逻辑：** 同普通领取，检查库存 > 0、未重复领取 → `remainStock - 1` → 插入 `user_coupon`。
+#### 我的优惠券
+```
+GET /api/coupons?scope=mine
+```
+
+**Response `data`**
+```json
+[
+  {
+    "id": 4,
+    "name": "满20减5",
+    "discountAmount": 5,
+    "minAmount": 20,
+    "type": 0,
+    "status": 0,
+    "startTime": "2026-06-01",
+    "endTime": "2026-07-01"
+  }
+]
+```
+
+| status | 含义 |
+|--------|------|
+| 0 | 未使用 |
+| 1 | 已使用 |
+| 2 | 已过期 |
 
 ---
 
@@ -755,42 +715,7 @@ POST /api/user/logout
 GET /api/admin/dashboard
 ```
 
-**Response `data` 字段说明**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| lotCount | int | 停车场总数 |
-| spotCount | int | 车位总数 |
-| todayOrders | int | 今日订单数 |
-| todayRevenue | number | 今日收入（元） |
-| orderTrend | array | 近7日订单趋势 |
-| revenueTrend | array | 近7日收入趋势 |
-| recentOrders | array | 最新订单列表 |
-
-**`orderTrend[]`**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| date | string | 日期，如 `06/17` |
-| orders | int | 当日订单数 |
-
-**`revenueTrend[]`**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| date | string | 日期，如 `06/17` |
-| revenue | number | 当日收入（元） |
-
-**`recentOrders[]`**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| lotName | string | 停车场名称 |
-| plate | string | 车牌号 |
-| status | string | 状态：`进行中` / `已结算` / `待支付` |
-| time | string | 时间，如 `10:15` |
-
-**完整响应示例**
+**Response `data`**
 ```json
 {
   "lotCount": 12,
@@ -799,25 +724,14 @@ GET /api/admin/dashboard
   "todayRevenue": 5200.00,
   "orderTrend": [
     { "date": "06/17", "orders": 85 },
-    { "date": "06/18", "orders": 92 },
-    { "date": "06/19", "orders": 78 },
-    { "date": "06/20", "orders": 110 },
-    { "date": "06/21", "orders": 95 },
-    { "date": "06/22", "orders": 120 },
-    { "date": "06/23", "orders": 105 }
+    { "date": "06/18", "orders": 92 }
   ],
   "revenueTrend": [
     { "date": "06/17", "revenue": 3200 },
-    { "date": "06/18", "revenue": 3800 },
-    { "date": "06/19", "revenue": 2900 },
-    { "date": "06/20", "revenue": 4100 },
-    { "date": "06/21", "revenue": 3600 },
-    { "date": "06/22", "revenue": 4500 },
-    { "date": "06/23", "revenue": 3900 }
+    { "date": "06/18", "revenue": 3800 }
   ],
   "recentOrders": [
-    { "lotName": "科技园停车场", "plate": "粤B·88888", "status": "进行中", "time": "10:15" },
-    { "lotName": "华强北停车场", "plate": "粤B·12345", "status": "已结算", "time": "09:50" }
+    { "lotName": "科技园停车场", "plate": "粤B·88888", "status": "进行中", "time": "10:15" }
   ]
 }
 ```
@@ -828,68 +742,30 @@ GET /api/admin/dashboard
 
 | Method | Path | 说明 |
 |--------|------|------|
-| GET | `/api/admin/parking-lots` | 分页列表（支持模糊搜索 + 状态筛选） |
-| GET | `/api/admin/parking-lots/names` | 名称列表（仅 id + name，轻量，不做 Redis 查询） |
+| GET | `/api/admin/parking-lots` | 列表 |
 | POST | `/api/admin/parking-lots` | 新增 |
 | PUT | `/api/admin/parking-lots/{id}` | 编辑 |
 | DELETE | `/api/admin/parking-lots/{id}` | 删除 |
 
-**GET 列表 Query 参数**
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| page | int | 是 | — | 页码，从1开始 |
-| size | int | 是 | — | 每页条数，建议15 |
-| keyword | string | 否 | — | 模糊匹配名称、地址 |
-| status | int | 否 | — | 1=营业中，0=已关闭，不传=全部 |
-
-**GET Request 示例**
-```
-GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
-```
-
-**GET `/names` Response `data`**
+**GET Response `data`**
 ```json
 [
-  { "id": 1, "name": "科技园停车场" },
-  { "id": 2, "name": "华强北停车场" }
+  {
+    "id": 1,
+    "name": "科技园停车场",
+    "address": "南山区科技南路100号",
+    "totalSpots": 100,
+    "availableSpots": 45,
+    "longitude": 113.95,
+    "latitude": 22.54,
+    "status": 1
+  }
 ]
 ```
 
-**GET 列表 Response `data`**
+**新增/编辑 Request**
 ```json
-{
-  "total": 50,
-  "dataList": [
-    {
-      "id": 1,
-      "name": "科技园停车场",
-      "address": "南山区科技南路100号",
-      "totalSpots": 100,
-      "availableSpots": 45,
-      "longitude": 113.95,
-      "latitude": 22.54,
-      "status": 1
-    }
-  ]
-}
-```
-
-**新增 Response `data`**
-```json
-{ "id": 12, "name": "新停车场", "address": "地址", "totalSpots": 0, "longitude": 113.95, "latitude": 22.54, "status": 1 }
-```
-
-> `totalSpots`、`availableSpots` 由服务端实时计算，新增/修改时不接受这两个字段。
-
-**POST Request**（`/api/admin/parking-lots`）
-```json
-{ "name": "新停车场", "address": "地址", "longitude": 113.95, "latitude": 22.54, "status": 1 }
-```
-
-**PUT Request**（`/api/admin/parking-lots/{id}`）
-```json
-{ "name": "新停车场", "address": "地址", "longitude": 113.95, "latitude": 22.54, "status": 1 }
+{ "name": "新停车场", "address": "地址", "totalSpots": 100, "longitude": 113.95, "latitude": 22.54, "status": 1 }
 ```
 
 > 新增时需要同步写入 Redis GEO：`GEOADD parking:lot:geo {lng} {lat} {lotId}`
@@ -916,11 +792,6 @@ GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
 **批量新增 Request**
 ```json
 { "lotId": 1, "spotNumbers": ["E01", "E02", "E03"], "type": 0 }
-```
-
-**编辑 Request**
-```json
-{ "spotNumber": "B01", "type": 0 }
 ```
 
 > 新增后初始化 Redis Bitmap：`SETBIT parking:spots:{lotId} {spotId} 0`
@@ -976,33 +847,22 @@ GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
 
 | Method | Path | 说明 |
 |--------|------|------|
-| GET | `/api/admin/users` | 分页列表（支持模糊搜索） |
+| GET | `/api/admin/users` | 用户列表 |
 | GET | `/api/admin/users/{id}` | 用户详情 |
-
-**GET 列表 Query 参数**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| page | int | 是 | 页码，从1开始 |
-| size | int | 是 | 每页条数，建议10 |
-| keyword | string | 否 | 模糊匹配用户名、手机号 |
 
 **GET 列表 Response `data`**
 ```json
-{
-  "total": 50,
-  "dataList": [
-    {
-      "id": 1,
-      "username": "张三",
-      "phone": "13800138000",
-      "vehicles": 2,
-      "orderCount": 15,
-      "balance": 128.50,
-      "createTime": "2026-01-15 10:00"
-    }
-  ]
-}
+[
+  {
+    "id": 1,
+    "username": "张三",
+    "phone": "13800138000",
+    "vehicles": 2,
+    "orderCount": 15,
+    "balance": 128.50,
+    "createTime": "2026-01-15 10:00"
+  }
+]
 ```
 
 **GET 详情 Response `data`**
@@ -1025,20 +885,14 @@ GET /api/admin/parking-lots?page=1&size=15&keyword=科技园&status=1
 | Method | Path | 说明 |
 |--------|------|------|
 | GET | `/api/admin/admins` | 列表 |
-| GET | `/api/admin/admins/{id}` | 详情 |
 | POST | `/api/admin/admins` | 新增 |
 
-**GET 列表 Response `data`**
+**GET Response `data`**
 ```json
 [
   { "id": 1, "username": "admin", "role": "super", "createTime": "2026-01-01 00:00" },
   { "id": 2, "username": "operator1", "role": "operator", "createTime": "2026-06-01 12:00" }
 ]
-```
-
-**GET 详情 Response `data`**
-```json
-{ "id": 1, "username": "admin", "role": "super", "createTime": "2026-01-01 00:00" }
 ```
 
 **新增管理员 Request**
@@ -1086,10 +940,11 @@ POST /api/admin/logout
 ## 四、Redis Key 设计速查
 
 | Key | 类型 | 用途 |
-|-----|------|------|
+|------|------|------|
 | `parking:lot:geo` | GEO | 存储停车场经纬度 |
 | `parking:spots:{lotId}` | Bitmap | 车位状态（offset = spot.id） |
-| `lock:reserve:{lotId}:{spotId}` | String | 分布式锁，TTL = 900s |
+| `lock:reserve:{lotId}:{spotId}` | String | 预约分布式锁，TTL = 900s |
+| `lock:direct:{lotId}:{spotId}` | String | 直接入场分布式锁，TTL = 900s |
 | `cache:parking:lots` | String | 停车场列表缓存 |
 | `coupon:flash:{couponId}` | String | 秒杀库存 |
 

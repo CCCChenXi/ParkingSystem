@@ -1,12 +1,11 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
+import com.xigeandwillian.parkingsystem.client.dto.wallet.RechargeDTO;
 import com.xigeandwillian.parkingsystem.client.service.service.WalletService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
-
-import java.math.BigDecimal;
 
 @Slf4j
 @RestController
@@ -33,8 +32,9 @@ public class WalletController {
      * @return
      */
     @PostMapping("/recharge")
-    public Result recharge(@RequestParam BigDecimal amount) {
-        return walletService.recharge(amount);
+    public Result recharge(@RequestBody RechargeDTO dto) {
+        log.info("钱包充值: {}", dto.getAmount());
+        return walletService.recharge(dto.getAmount());
     }
 
 
