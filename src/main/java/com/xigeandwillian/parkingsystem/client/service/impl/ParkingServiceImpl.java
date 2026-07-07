@@ -16,7 +16,6 @@ import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.DistanceUtil;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.geo.Distance;
@@ -29,14 +28,13 @@ import org.springframework.data.redis.domain.geo.GeoShape;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-
-import static com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant.MAXIMUM_SIZE;
 import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Cache.NULL_TTL;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
@@ -53,11 +51,8 @@ public class ParkingServiceImpl implements ParkingService {
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
 
-    /*用于防范高并发请求单个停车场详细信息*/
-    private final Cache<Long, ParkingLotVO> localCache = Caffeine.newBuilder()
-            .maximumSize(MAXIMUM_SIZE)
-            .expireAfterWrite(1, TimeUnit.MINUTES)
-            .build();
+    @Resource(name = "parkingLotCache")
+    private Cache<Long, ParkingLotVO> localCache;
     /*Caffeine空对象缓存*/
     private static final ParkingLotVO NULL_MARKER = new ParkingLotVO();
 

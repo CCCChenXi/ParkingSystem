@@ -22,6 +22,14 @@ spring:
           max-idle: 8      # 最大空闲连接
           min-idle: 0      # 最小空闲连接
 
+  # ====================== RabbitMQ配置 ======================
+  rabbitmq:
+    host: 47.99.169.107
+    port: 5672
+    username: xige
+    password: 348452
+    virtual-host: /
+
 # ====================== 服务器配置 ======================
 server:
   port: 8080
@@ -36,7 +44,6 @@ logging:
 jwt:
   secret: XiGeAndWillian-parking-system-jwt-secret-2026
   expiration: 7200000
-
 
 mybatis-plus:
   configuration:

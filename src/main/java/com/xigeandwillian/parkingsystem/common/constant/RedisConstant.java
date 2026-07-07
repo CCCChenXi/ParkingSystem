@@ -90,6 +90,26 @@ public class RedisConstant {
         public static final String LOT_SPOTS_BITMAP = "parking:spot:bitmap:";
     }
 
+    public static class Coupon {
+        /** Redis key: 可领取优惠券缓存 */
+        public static final String AVAILABLE_KEY = "coupon:available";
+        /** 可领取优惠券缓存TTL(秒) */
+        public static final long AVAILABLE_TTL_SECOND = 60;
+        /** Redis key: 秒杀优惠券详情缓存 */
+        public static final String DETAIL_KEY = "coupon:detail:map";
+        /** 秒杀优惠券详情缓存TTL(秒) */
+        public static final long DETAIL_TTL_SECOND = 120;
+        /** Redis key: 秒杀优惠券实时库存 */
+        public static final String SECKILL_STOCK = "coupon:seckill:stock:";
+
+        public static final String BOUGHT_KEY = "coupon:bought:";
+
+        public static final String STATIC_KEY = "coupon:static:";
+        public static final long STATIC_TTL_SECOND = 120;
+        public static final long STATIC_NULL_TTL_MINUTE = 5;
+
+    }
+
     public static class Cache {
         /*锁TTL->秒*/
         public static final long LOCK_TTL = 5L;

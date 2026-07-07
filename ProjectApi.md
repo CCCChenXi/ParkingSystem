@@ -501,28 +501,160 @@ PUT /api/messages/read-all
 
 ### 2.5 优惠券
 
-#### 可领取优惠券列表
+#### 可领取优惠券列表（游标分页）
 ```
 GET /api/coupons/available
 ```
 
+前端无限滚动，每次 10 条。不包含动态字段（remainStock/stock），详情需通过详情接口获取。
+
+**Request Params**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `lastTimestamp` | Long | 否 | 上次最后一条的 `startTime` 时间戳（毫秒），首次不传 |
+| `lastId` | Long | 否 | 上次最后一条的 `id`，首次不传 |
+| `pageSize` | Integer | 否 | 默认 10 |
+
+**排序** `start_time DESC, id DESC`
+
+**游标条件**（`lastTimestamp` 和 `lastId` 同时传才生效）：
+```sql
+AND (start_time < FROM_UNIXTIME(#{lastTimestamp}/1000)
+  OR (start_time = FROM_UNIXTIME(#{lastTimestamp}/1000) AND id < #{lastId}))
+```
+
 **Response `data`**
 ```json
-[
-  {
-    "id": 1,
-    "name": "新用户专享",
-    "description": "满10减5",
-    "discountAmount": 5,
-    "minAmount": 10,
-    "type": 0,
-    "stock": 100,
-    "remainStock": 88,
-    "startTime": "2026-06-01",
-    "endTime": "2026-12-31"
-  }
-]
+{
+  "list": [
+    {
+      "id": 1,
+      "name": "新用户专享",
+      "description": "满10减5",
+      "discountAmount": 5,
+      "minAmount": 10,
+      "type": 0,
+      "claimed": false,
+      "startTime": "2026-06-01 00:00:00",
+      "endTime": "2026-12-31 23:59:59"
+    }
+  ],
+  "nextTimestamp": 1780300800000,
+  "nextId": 5,
+  "hasMore": true
+}
 ```
+
+| 字段 | 说明 |
+|------|------|
+| `list` | 本页 10 条数据，不含 `stock`/`remainStock`，含 `claimed` |
+| `claimed` | 当前用户是否已领取（`false`=未领取 `true`=已领取） |
+| `nextTimestamp` | 下次请求的游标时间戳 |
+| `nextId` | 下次请求的游标 ID |
+| `hasMore` | 是否还有下一页 |
+
+#### 我的优惠券列表（游标分页）
+```
+GET /api/coupons?scope=mine
+```
+
+游标在 `user_coupon.create_time DESC, user_coupon.id DESC`。
+
+**Request Params**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `lastTimestamp` | Long | 否 | 上次最后一条的 `create_time` 时间戳（毫秒），首次不传 |
+| `lastId` | Long | 否 | 上次最后一条 `user_coupon.id`，首次不传 |
+| `pageSize` | Integer | 否 | 默认 10 |
+| `status` | Integer | 否 | 筛选状态：0=未使用 1=已使用 2=已过期 |
+| `keyword` | String | 否 | 模糊匹配 `coupon.name` |
+
+**Response `data`**
+```json
+{
+  "list": [
+    {
+      "id": 4,
+      "couponId": 1,
+      "name": "满20减5",
+      "description": "停车优惠",
+      "discountAmount": 5,
+      "minAmount": 20,
+      "type": 0,
+      "status": 0,
+      "createTime": "2026-07-01 12:00:00",
+      "startTime": "2026-06-01 00:00:00",
+      "endTime": "2026-07-01 23:59:59"
+    }
+  ],
+  "nextTimestamp": 1780300800000,
+  "nextId": 4,
+  "hasMore": true
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `list` | 本页数据，不含 `stock`/`remainStock`，含 `couponId` |
+| `couponId` | 真实优惠券 ID（前端详情用） |
+| `status` | 0=未使用 1=已使用 2=已过期 |
+| `createTime` | 用户领取时间（用于游标） |
+
+#### 可领取优惠券详情
+```
+GET /api/coupons/available/{id}/detail
+```
+
+返回完整字段，包含动态库存信息 + 领取状态。从可领取列表点击卡片时调用。
+
+**Response `data`**
+```json
+{
+  "id": 1,
+  "name": "新用户停车专享",
+  "description": "首次停车立减20元",
+  "discountAmount": 20,
+  "minAmount": 30,
+  "type": 0,
+  "stock": 100,
+  "remainStock": 88,
+  "claim": false,
+  "startTime": "2026-06-01 00:00:00",
+  "endTime": "2026-12-31 23:59:59"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `claim` | 当前用户是否已领取 |
+
+#### 我的优惠券详情
+```
+GET /api/coupons/mine/{id}/detail
+```
+
+`{id}` 为真实优惠券 ID。返回基础信息 + 用户维度的使用状态，不含库存字段。
+
+**Response `data`**
+```json
+{
+  "id": 1,
+  "name": "新用户停车专享",
+  "description": "首次停车立减20元",
+  "discountAmount": 20,
+  "minAmount": 30,
+  "type": 0,
+  "status": 0,
+  "startTime": "2026-06-01 00:00:00",
+  "endTime": "2026-12-31 23:59:59"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `status` | 0=未使用 1=已使用 2=已过期 |
 
 #### 领取普通优惠券
 ```
@@ -534,19 +666,11 @@ POST /api/coupons/claim/{id}
 { "code": 200, "message": "领取成功" }
 ```
 
+**后端逻辑：** 检查库存 > 0、未重复领取 → `remainStock - 1` → 插入 `user_coupon` 表（`status=0`）。
+
 #### 秒杀优惠券
 ```
 POST /api/coupons/flash/{id}
-```
-
-**后端逻辑（Lua 脚本保证原子性）**
-```lua
-local stock = redis.call('DECR', 'coupon:flash:' .. KEYS[1])
-if stock < 0 then
-  redis.call('INCR', 'coupon:flash:' .. KEYS[1])
-  return -1
-end
-return stock
 ```
 
 **Response** `data` 为空，仅返回统一信封：
@@ -554,32 +678,7 @@ return stock
 { "code": 200, "message": "秒杀成功" }
 ```
 
-#### 我的优惠券
-```
-GET /api/coupons?scope=mine
-```
-
-**Response `data`**
-```json
-[
-  {
-    "id": 4,
-    "name": "满20减5",
-    "discountAmount": 5,
-    "minAmount": 20,
-    "type": 0,
-    "status": 0,
-    "startTime": "2026-06-01",
-    "endTime": "2026-07-01"
-  }
-]
-```
-
-| status | 含义 |
-|--------|------|
-| 0 | 未使用 |
-| 1 | 已使用 |
-| 2 | 已过期 |
+**后端逻辑：** 同普通领取，检查库存 > 0、未重复领取 → `remainStock - 1` → 插入 `user_coupon`。
 
 ---
 

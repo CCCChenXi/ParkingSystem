@@ -2,7 +2,6 @@ package com.xigeandwillian.parkingsystem.client.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xigeandwillian.parkingsystem.client.service.service.WalletService;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Wallet;
@@ -11,13 +10,10 @@ import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.concurrent.TimeUnit;
-
-import static com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant.EXPIRE_TIME;
-import static com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant.MAXIMUM_SIZE;
 
 @Slf4j
 @Service
@@ -33,11 +29,8 @@ public class WalletServiceImpl implements WalletService {
       3.采用Caffeine本地短时缓存策略->降低短期数据库请求次数
      */
 
-    /*同时容许10000名用户钱包信息存储->30s短暂保留*/
-    private final Cache<String, BigDecimal> balanceCache = Caffeine.newBuilder()
-            .maximumSize(MAXIMUM_SIZE)
-            .expireAfterWrite(EXPIRE_TIME, TimeUnit.SECONDS)
-            .build();
+    @Resource(name = "walletBalanceCache")
+    private Cache<String, BigDecimal> balanceCache;
 
 
 

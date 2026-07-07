@@ -3,7 +3,6 @@ package com.xigeandwillian.parkingsystem.client.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xigeandwillian.parkingsystem.client.dto.user.VehicleDTO;
 import com.xigeandwillian.parkingsystem.client.service.service.VehicleService;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
@@ -13,11 +12,11 @@ import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -26,15 +25,8 @@ public class VehicleServiceImpl implements VehicleService {
 
     private final VehicleMapper vehicleMapper;
 
-    /**
-     * Caffeine 本地缓存，用于缓存用户车辆列表
-     * 容量上限 10,000 个用户，超出后 LRU 自动淘汰
-     * 写入后 30 分钟自动过期
-     */
-    private final Cache<String, List<Vehicle>> vehicleCache = Caffeine.newBuilder()
-            .maximumSize(CaffeineConstant.MAXIMUM_SIZE)
-            .expireAfterWrite(CaffeineConstant.EXPIRE_TIME, TimeUnit.MINUTES)
-            .build();
+    @Resource(name = "vehicleCache")
+    private Cache<String, List<Vehicle>> vehicleCache;
 
     /**
      * 获取当前登录用户的车辆信息
@@ -102,4 +94,7 @@ public class VehicleServiceImpl implements VehicleService {
     }
 
 
+    public void setVehicleCache(Cache<String, List<Vehicle>> vehicleCache) {
+        this.vehicleCache = vehicleCache;
+    }
 }
