@@ -7,6 +7,7 @@ import lombok.Data;
 @AllArgsConstructor
 public class SpotVO {
     private Long id;
+    private Integer seq;
     private String spotNumber;
     private Integer type;
     private Integer status;

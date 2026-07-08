@@ -4,6 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponAvailableVO;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
+import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Vehicle;
@@ -63,6 +64,14 @@ public class CaffeineCacheConfig {
         return Caffeine.newBuilder()
                 .maximumSize(CaffeineConstant.COUPON_MAXIMUM_SIZE)
                 .expireAfterWrite(CaffeineConstant.COUPON_DETAIL_EXPIRE_MINUTES, TimeUnit.MINUTES)
+                .build();
+    }
+
+    @Bean("parkingSpotCache")
+    public Cache<String, List<SpotVO>> parkingSpotCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(CaffeineConstant.PARKING_SPOT_MAXIMUM_SIZE)
+                .expireAfterWrite(CaffeineConstant.PARKING_SPOT_EXPIRE_MINUTES, TimeUnit.MINUTES)
                 .build();
     }
 }

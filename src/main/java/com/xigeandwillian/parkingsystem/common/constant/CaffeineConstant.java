@@ -8,6 +8,9 @@ public class CaffeineConstant {
     public static final long PARKING_MAXIMUM_SIZE = 1000;
     public static final long PARKING_EXPIRE_SECONDS = 10;
 
+    public static final long PARKING_SPOT_MAXIMUM_SIZE = 500;
+    public static final long PARKING_SPOT_EXPIRE_MINUTES = 5;
+
     public static final long VEHICLE_MAXIMUM_SIZE = 10000;
     public static final long VEHICLE_EXPIRE_MINUTES = 2;
 

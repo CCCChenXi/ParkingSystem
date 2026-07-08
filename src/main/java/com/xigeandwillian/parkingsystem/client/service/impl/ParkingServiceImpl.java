@@ -4,14 +4,13 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotCache;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
+import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
-import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.DistanceUtil;
@@ -26,20 +25,13 @@ import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.data.redis.domain.geo.GeoShape;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
-import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Cache.NULL_TTL;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
-import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spots.LOT_SPOTS;
-import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spots.LOT_SPOTS_BITMAP;
 
 @Service
 @Slf4j
@@ -47,9 +39,8 @@ import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Spo
 public class ParkingServiceImpl implements ParkingService {
 
     private final ParkingLotMapper parkingLotMapper;
-    private final ParkingSpotMapper parkingSpotMapper;
+    private final ParkingDataProvider parkingDataProvider;
     private final StringRedisTemplate stringRedisTemplate;
-    private final RedissonClient redissonClient;
 
     @Resource(name = "parkingLotCache")
     private Cache<Long, ParkingLotVO> localCache;
@@ -272,128 +263,25 @@ public class ParkingServiceImpl implements ParkingService {
         return Result.ok(vo);
     }
 
-    /**
-     * 获取停车场车位列表
-     *
-     * @param LotId
-     * @return
-     */
     @Override
-    public Result parkingSpots(Long LotId) {
-
-        List<SpotVO> spots;
-
-        try {
-            // 空值标记拦截（String key，5min TTL，防穿透）
-            String nullKey = "parking:spot:null:" + LotId;
-            if (stringRedisTemplate.hasKey(nullKey)) {
-                throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂未开放");
-            }
-
-            Map<Object, Object> entries = stringRedisTemplate.opsForHash().entries(LOT_SPOTS + LotId);
-
-            if (entries.isEmpty()) {
-                // 缓存未命中 → 加锁重建（最多 3 次尝试）
-                RLock lock = redissonClient.getLock("lock:parking:spot:" + LotId);
-                boolean locked = false;
-                for (int i = 0; i < 3; i++) {
-                    locked = lock.tryLock(500, TimeUnit.MILLISECONDS);
-                    if (locked) break;
-                    if (i < 2) {
-                        TimeUnit.MILLISECONDS.sleep(100);
-                    }
-                }
-                if (!locked) {
-                    throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
-                }
-                try {
-                    // 双检：获取锁后其他线程可能已完成重建
-                    entries = stringRedisTemplate.opsForHash().entries(LOT_SPOTS + LotId);
-                    if (!entries.isEmpty()) {
-                        spots = buildSpots(entries, LotId);
-                        return Result.ok(spots);
-                    }
-
-                    List<ParkingSpot> lotSpots = parkingSpotMapper.selectList(
-                            new QueryWrapper<ParkingSpot>()
-                                    .eq("lot_id", LotId)
-                                    .orderByAsc("seq"));
-
-                    if (lotSpots.isEmpty()) {
-                        stringRedisTemplate.opsForValue().set(nullKey, "", NULL_TTL, TimeUnit.MINUTES);
-                        throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂未开放");
-                    }
-
-                    // 回填 Hash（12h TTL）+ 初始化 Bitmap（全0，无需 TTL）
-                    Map<String, String> spotMap = new HashMap<>();
-                    for (ParkingSpot spot : lotSpots) {
-                        SpotVO vo = new SpotVO(spot.getId(), spot.getSpotNumber(), spot.getType(), 0);
-                        spotMap.put(String.valueOf(spot.getSeq()), JSONUtil.toJsonStr(vo));
-                    }
-                    stringRedisTemplate.opsForHash().putAll(LOT_SPOTS + LotId, spotMap);
-                    stringRedisTemplate.expire(LOT_SPOTS + LotId, 12, TimeUnit.HOURS);
-
-                    int bitCount = lotSpots.size();
-                    byte[] bitmap = new byte[(bitCount + 7) / 8];
-                    stringRedisTemplate.opsForValue().set(
-                            LOT_SPOTS_BITMAP + LotId,
-                            new String(bitmap, StandardCharsets.ISO_8859_1));
-
-                    spots = buildSpots(new HashMap<>(spotMap), LotId);
-                    return Result.ok(spots);
-
-                } finally {
-                    lock.unlock();
-                }
-            }
-
-            spots = buildSpots(entries, LotId);
-
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("获取车位列表失败", e);
-            // DB 降级
-            List<ParkingSpot> lotSpots = parkingSpotMapper.selectList(
-                    new QueryWrapper<ParkingSpot>()
-                            .eq("lot_id", LotId)
-                            .orderByAsc("seq"));
-            if (lotSpots.isEmpty()) {
-                throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂无车位");
-            }
-            spots = lotSpots.stream()
-                    .map(s -> new SpotVO(s.getId(), s.getSpotNumber(), s.getType(), 0))
-                    .toList();
+    public Result parkingSpots(Long id) {
+        log.info("获取停车场车位信息: lotId={}", id);
+        List<SpotVO> spots = parkingDataProvider.getAllSpotByLotId(id);
+        if (spots.isEmpty()) {
+            throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂无车位");
         }
-
+        CacheResult<List<Integer>> statusResult = parkingDataProvider.getSpotStatusList(id);
+        if (statusResult.isHit()) {
+            List<Integer> statusList = statusResult.getData();
+            if (statusList.size() == spots.size()) {
+                for (int i = 0; i < spots.size(); i++) {
+                    spots.get(i).setStatus(statusList.get(i));
+                }
+            } else {
+                log.warn("Bitmap长度与列表不一致, lotId={}, statusSize={}, spotSize={}",
+                        id, statusList.size(), spots.size());
+            }
+        }
         return Result.ok(spots);
-    }
-
-    /**
-     * 合并 Hash + Bitmap → SpotVO 列表（bitmap 不存在时自动初始化）
-     */
-    private List<SpotVO> buildSpots(Map<Object, Object> entries, Long LotId) {
-        String raw = stringRedisTemplate.opsForValue().get(LOT_SPOTS_BITMAP + LotId);
-
-        if (raw == null) {
-            int bitCount = entries.size();
-            byte[] bytes = new byte[(bitCount + 7) / 8];
-            raw = new String(bytes, StandardCharsets.ISO_8859_1);
-            stringRedisTemplate.opsForValue().set(LOT_SPOTS_BITMAP + LotId, raw);
-        }
-
-        byte[] bitmap = raw.getBytes(StandardCharsets.ISO_8859_1);
-        return entries.entrySet().stream()
-                .sorted(Comparator.comparing(e -> Long.valueOf(e.getKey().toString())))
-                .map(e -> {
-                    int seq = Integer.parseInt(e.getKey().toString());
-                    SpotVO vo = JSONUtil.toBean(e.getValue().toString(), SpotVO.class);
-                    // 按 seq 从 Bitmap 中读取该车位状态（0 空闲 / 1 占用）
-                    boolean occupied = seq / 8 < bitmap.length
-                            && (bitmap[seq / 8] & (1 << (7 - seq % 8))) != 0;
-                    vo.setStatus(occupied ? 1 : 0);
-                    return vo;
-                })
-                .toList();
     }
 }

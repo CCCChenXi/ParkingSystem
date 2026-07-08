@@ -125,6 +125,8 @@ public class RedisConstant {
         /** 停车场坐标信息*/
         public static final String PARKING_GEO = "parking:geo";
         public static final String PARKING_SPOT_STATUS = "parking:spot:status:";
+        public static final String PARKING_SPOT_LIST = "parking:spot:list:";
+        public static final long PARKING_SPOT_LIST_TTL = 600;
         public static final String PARKING_LOT_AVAILABLE = "parking:lot:available:";
         /** 车位空闲状态值 */
         public static final String SPOT_STATUS_FREE = "0";

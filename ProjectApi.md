@@ -149,8 +149,8 @@ GET /api/parking-lots/{id}/spots
 **Response `data`**
 ```json
 [
-  { "id": 1, "spotNumber": "A01", "type": 0, "status": 1 },
-  { "id": 2, "spotNumber": "A02", "type": 2, "status": 0 }
+  { "id": 1, "spotNumber": "A01", "type": 0, "status": 1, "seq": 1 },
+  { "id": 2, "spotNumber": "A02", "type": 2, "status": 0, "seq": 2 }
 ]
 ```
 
@@ -160,6 +160,7 @@ GET /api/parking-lots/{id}/spots
 | `spotNumber` | 编号 A01 |
 | `type` | 0 = 标准 1 = 大型 2 = 充电桩 |
 | `status` | 0 = 空闲 1 = 占用（来自 Redis `GETBIT parking:spots:{lotId} {spotId}`） |
+| `seq` | 停车场内第几个车位（从0开始） |
 
 > 后端实现：查 DB `parking_spot` 元数据 + Redis Bitmap 组装返回
 
@@ -301,7 +302,7 @@ POST /api/orders
 
 **Request**
 ```json
-{ "lotId": 1, "spotId": 100, "plateNumber": "粤B·88888", "couponId": 4 }
+{ "lotId": 1, "spotId": 100, "seq": 1, "plateNumber": "粤B·88888", "couponId": 4 }
 ```
 
 **后端逻辑**
