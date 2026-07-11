@@ -1,5 +1,7 @@
 package com.xigeandwillian.parkingsystem.common.config;
 
+import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
+import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -9,9 +11,10 @@ import org.springframework.amqp.core.Queue;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,9 +22,12 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    public static final String SECKILL_QUEUE = "seckill.order.queue";
-    public static final String SECKILL_EXCHANGE = "seckill.order.exchange";
-    public static final String SECKILL_ROUTING_KEY = "seckill.order";
+    @Bean
+    public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
+        RabbitAdmin admin = new RabbitAdmin(connectionFactory);
+        admin.setAutoStartup(true);
+        return admin;
+    }
 
     @Bean
     public Jackson2JsonMessageConverter jackson2JsonMessageConverter() {
@@ -48,24 +54,22 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue seckillQueue() {
-        return new Queue(SECKILL_QUEUE, true);
+        return new Queue(MQConstant.SECKILL_QUEUE, true);
     }
 
     @Bean
     public DirectExchange seckillExchange() {
-        return new DirectExchange(SECKILL_EXCHANGE);
+        return new DirectExchange(MQConstant.SECKILL_EXCHANGE);
     }
 
     @Bean
     public Binding seckillBinding(Queue seckillQueue, DirectExchange seckillExchange) {
-        return BindingBuilder.bind(seckillQueue).to(seckillExchange).with(SECKILL_ROUTING_KEY);
+        return BindingBuilder.bind(seckillQueue).to(seckillExchange).with(MQConstant.SECKILL_ROUTING_KEY);
     }
-
-    public static final String CACHE_INVALIDATE_EXCHANGE = "cache.invalidate.exchange";
 
     @Bean
     public FanoutExchange cacheInvalidateExchange() {
-        return new FanoutExchange(CACHE_INVALIDATE_EXCHANGE);
+        return new FanoutExchange(MQConstant.CACHE_INVALIDATE_EXCHANGE);
     }
 
     @Bean
@@ -78,54 +82,157 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(cacheInvalidateQueue).to(cacheInvalidateExchange);
     }
 
-    // ──── 车位缓存重试（保证最终成功） ────
-    // 链路: afterCommit → Source(TTL=30s, DLX→RetryExchange) → Proc(消费者) → 成功广播 / 失败重发到Source / 用尽→Alert
-    public static final String PARKING_SPOT_CACHE_RETRY_EXCHANGE = "parking.spot.cache.retry.exchange";
-    public static final String PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE = "parking.spot.cache.update.source.queue";
-    public static final String PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE = "parking.spot.cache.create.source.queue";
-    public static final String PARKING_SPOT_CACHE_RETRY_PROC_QUEUE = "parking.spot.cache.retry.proc.queue";
-    public static final String PARKING_SPOT_CACHE_RETRY_ALERT_QUEUE = "parking.spot.cache.retry.alert.queue";
+    // ──── 停车场缓存初始化重试（保证最终成功） ────
+    @Bean
+    public DirectExchange parkingLotCacheInitExchange() {
+        return new DirectExchange(MQConstant.PARKING_LOT_CACHE_INIT_EXCHANGE);
+    }
 
     @Bean
+    public Queue parkingLotCacheInitDelayQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", MQConstant.PARKING_LOT_CACHE_INIT_EXCHANGE);
+        args.put("x-dead-letter-routing-key", MQConstant.PROC_ROUTING_KEY);
+        args.put("x-message-ttl", MQConstant.PARKING_LOT_CACHE_INIT_TTL_MS);
+        return new Queue(MQConstant.PARKING_LOT_CACHE_INIT_DELAY_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue parkingLotCacheInitProcQueue() {
+        return new Queue(MQConstant.PARKING_LOT_CACHE_INIT_PROC_QUEUE, true);
+    }
+
+    @Bean
+    public Queue parkingLotCacheInitAlertQueue() {
+        return new Queue(MQConstant.PARKING_LOT_CACHE_INIT_ALERT_QUEUE, true);
+    }
+
+    @Bean
+    public Binding parkingLotCacheInitProcBinding(Queue parkingLotCacheInitProcQueue, DirectExchange parkingLotCacheInitExchange) {
+        return BindingBuilder.bind(parkingLotCacheInitProcQueue).to(parkingLotCacheInitExchange).with(MQConstant.PROC_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding parkingLotCacheInitAlertBinding(Queue parkingLotCacheInitAlertQueue, DirectExchange parkingLotCacheInitExchange) {
+        return BindingBuilder.bind(parkingLotCacheInitAlertQueue).to(parkingLotCacheInitExchange).with(MQConstant.ALERT_ROUTING_KEY);
+    }
+
+    // ──── 车位释放重试（保证最终成功） ────
+    @Bean
+    public DirectExchange spotReleaseRetryExchange() {
+        return new DirectExchange(MQConstant.SPOT_RELEASE_RETRY_EXCHANGE);
+    }
+
+    @Bean
+    public Queue spotReleaseRetryDelayQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", MQConstant.SPOT_RELEASE_RETRY_EXCHANGE);
+        args.put("x-dead-letter-routing-key", MQConstant.PROC_ROUTING_KEY);
+        args.put("x-message-ttl", MQConstant.SPOT_RELEASE_RETRY_TTL_MS);
+        return new Queue(MQConstant.SPOT_RELEASE_RETRY_DELAY_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue spotReleaseRetryProcQueue() {
+        return new Queue(MQConstant.SPOT_RELEASE_RETRY_PROC_QUEUE, true);
+    }
+
+    @Bean
+    public Queue spotReleaseRetryAlertQueue() {
+        return new Queue(MQConstant.SPOT_RELEASE_RETRY_ALERT_QUEUE, true);
+    }
+
+    @Bean
+    public Binding spotReleaseRetryProcBinding(Queue spotReleaseRetryProcQueue, DirectExchange spotReleaseRetryExchange) {
+        return BindingBuilder.bind(spotReleaseRetryProcQueue).to(spotReleaseRetryExchange).with(MQConstant.PROC_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding spotReleaseRetryAlertBinding(Queue spotReleaseRetryAlertQueue, DirectExchange spotReleaseRetryExchange) {
+        return BindingBuilder.bind(spotReleaseRetryAlertQueue).to(spotReleaseRetryExchange).with(MQConstant.ALERT_ROUTING_KEY);
+    }
+
+    // ──── 车位缓存重试（保证最终成功） ────
+    @Bean
     public DirectExchange parkingSpotCacheRetryExchange() {
-        return new DirectExchange(PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+        return new DirectExchange(MQConstant.PARKING_SPOT_CACHE_RETRY_EXCHANGE);
     }
 
     @Bean
     public Queue parkingSpotCacheUpdateSourceQueue() {
         Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", PARKING_SPOT_CACHE_RETRY_EXCHANGE);
-        args.put("x-dead-letter-routing-key", "proc");
-        args.put("x-message-ttl", 30000);
-        return new Queue(PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-exchange", MQConstant.PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+        args.put("x-dead-letter-routing-key", MQConstant.PROC_ROUTING_KEY);
+        args.put("x-message-ttl", MQConstant.PARKING_SPOT_CACHE_UPDATE_TTL_MS);
+        return new Queue(MQConstant.PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE, true, false, false, args);
     }
 
     @Bean
     public Queue parkingSpotCacheCreateSourceQueue() {
         Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", PARKING_SPOT_CACHE_RETRY_EXCHANGE);
-        args.put("x-dead-letter-routing-key", "proc");
-        args.put("x-message-ttl", 10000);
-        return new Queue(PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-exchange", MQConstant.PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+        args.put("x-dead-letter-routing-key", MQConstant.PROC_ROUTING_KEY);
+        args.put("x-message-ttl", MQConstant.PARKING_SPOT_CACHE_CREATE_TTL_MS);
+        return new Queue(MQConstant.PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE, true, false, false, args);
     }
 
     @Bean
     public Queue parkingSpotCacheRetryProcQueue() {
-        return new Queue(PARKING_SPOT_CACHE_RETRY_PROC_QUEUE, true);
+        return new Queue(MQConstant.PARKING_SPOT_CACHE_RETRY_PROC_QUEUE, true);
     }
 
     @Bean
     public Binding parkingSpotCacheRetryProcBinding(Queue parkingSpotCacheRetryProcQueue, DirectExchange parkingSpotCacheRetryExchange) {
-        return BindingBuilder.bind(parkingSpotCacheRetryProcQueue).to(parkingSpotCacheRetryExchange).with("proc");
+        return BindingBuilder.bind(parkingSpotCacheRetryProcQueue).to(parkingSpotCacheRetryExchange).with(MQConstant.PROC_ROUTING_KEY);
     }
 
     @Bean
     public Queue parkingSpotCacheRetryAlertQueue() {
-        return new Queue(PARKING_SPOT_CACHE_RETRY_ALERT_QUEUE, true);
+        return new Queue(MQConstant.PARKING_SPOT_CACHE_RETRY_ALERT_QUEUE, true);
     }
 
     @Bean
     public Binding parkingSpotCacheRetryAlertBinding(Queue parkingSpotCacheRetryAlertQueue, DirectExchange parkingSpotCacheRetryExchange) {
-        return BindingBuilder.bind(parkingSpotCacheRetryAlertQueue).to(parkingSpotCacheRetryExchange).with("alert");
+        return BindingBuilder.bind(parkingSpotCacheRetryAlertQueue).to(parkingSpotCacheRetryExchange).with(MQConstant.ALERT_ROUTING_KEY);
+    }
+
+    /*预约*/
+    @Bean
+    public DirectExchange bookingExchange() {
+        return new DirectExchange(MQConstant.BOOKING_EXCHANGE);
+    }
+
+    @Bean
+    public Queue bookingNotifyQueue() {
+        return new Queue(MQConstant.BOOKING_NOTIFY_QUEUE, true);
+    }
+
+    @Bean
+    public Queue bookingDelayQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", OrderConstant.RESERVED_ORDER_TTL_MIN * 60 * 1000);
+        args.put("x-dead-letter-exchange", MQConstant.BOOKING_EXCHANGE);
+        args.put("x-dead-letter-routing-key", MQConstant.BOOKING_EXPIRE_ROUTING_KEY);
+        return new Queue(MQConstant.BOOKING_DELAY_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue bookingExpireQueue() {
+        return new Queue(MQConstant.BOOKING_EXPIRE_QUEUE, true);
+    }
+
+    @Bean
+    public Binding bookingNotifyBinding(Queue bookingNotifyQueue, DirectExchange bookingExchange) {
+        return BindingBuilder.bind(bookingNotifyQueue).to(bookingExchange).with(MQConstant.BOOKING_NOTIFY_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding bookingDelayBinding(Queue bookingDelayQueue, DirectExchange bookingExchange) {
+        return BindingBuilder.bind(bookingDelayQueue).to(bookingExchange).with(MQConstant.BOOKING_DELAY_ROUTING_KEY);
+    }
+
+    @Bean
+    public Binding bookingExpireBinding(Queue bookingExpireQueue, DirectExchange bookingExchange) {
+        return BindingBuilder.bind(bookingExpireQueue).to(bookingExchange).with(MQConstant.BOOKING_EXPIRE_ROUTING_KEY);
     }
 }

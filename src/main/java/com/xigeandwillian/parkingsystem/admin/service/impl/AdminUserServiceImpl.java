@@ -2,7 +2,7 @@ package com.xigeandwillian.parkingsystem.admin.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.xigeandwillian.parkingsystem.admin.service.Service.AdminUserService;
+import com.xigeandwillian.parkingsystem.admin.service.AdminUserService;
 import com.xigeandwillian.parkingsystem.admin.vo.user.AdminUserListVO;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.UserMapper;

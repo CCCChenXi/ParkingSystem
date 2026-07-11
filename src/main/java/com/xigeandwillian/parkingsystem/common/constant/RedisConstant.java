@@ -37,9 +37,9 @@ public class RedisConstant {
          */
         public static final String USER_REGISTER_PHONE = "user:register:phone:";
         /**
-         * 注册手机号标记TTL(天)
+         * 注册手机号标记TTL(分钟)
          */
-        public static final long USER_REGISTER_PHONE_TTL_DAY = 1;
+        public static final long USER_REGISTER_PHONE_TTL_MIN = 10;
         /**
          * Redis key: 用户登录错误计数
          */
@@ -83,59 +83,60 @@ public class RedisConstant {
     }
 
 
-    public static final class Spots {
-        /*停车场车位*/
-        public static final String LOT_SPOTS = "parking:spot:";//+Lot_id
-        /*停车场车位状态Bitmap*/
-        public static final String LOT_SPOTS_BITMAP = "parking:spot:bitmap:";
-    }
 
     public static class Coupon {
         /** Redis key: 可领取优惠券缓存 */
         public static final String AVAILABLE_KEY = "coupon:available";
-        /** 可领取优惠券缓存TTL(秒) */
-        public static final long AVAILABLE_TTL_SECOND = 60;
+        /** 可领取优惠券缓存TTL(分钟) */
+        public static final long AVAILABLE_TTL_MIN = 10;
         /** Redis key: 秒杀优惠券详情缓存 */
         public static final String DETAIL_KEY = "coupon:detail:map";
-        /** 秒杀优惠券详情缓存TTL(秒) */
-        public static final long DETAIL_TTL_SECOND = 120;
+        /** 秒杀优惠券详情缓存TTL(分钟) */
+        public static final long DETAIL_TTL_MIN = 5;
         /** Redis key: 秒杀优惠券实时库存 */
         public static final String SECKILL_STOCK = "coupon:seckill:stock:";
-
+        /** Redis key: 用户已领取优惠券标记(Set结构) */
         public static final String BOUGHT_KEY = "coupon:bought:";
-
+        /** Redis key: 优惠券静态详情缓存 */
         public static final String STATIC_KEY = "coupon:static:";
-        public static final long STATIC_TTL_SECOND = 120;
-        public static final long STATIC_NULL_TTL_MINUTE = 5;
+        /** 优惠券静态详情缓存TTL(分钟) */
+        public static final long STATIC_TTL_MIN = 2;
+        /** 优惠券静态详情空值缓存TTL(分钟) */
+        public static final long STATIC_NULL_TTL_MIN = 5;
 
+        /** 秒杀库存Redis缓存TTL(天) */
+        public static final long SECKILL_STOCK_TTL_DAY = 30;
+        /** 可领取优惠券重建分布式锁 */
+        public static final String COUPON_REBUILD_LOCK_AVAILABLE = "coupon:rebuild:lock:available";
+        /** 优惠券详情重建分布式锁 */
+        public static final String COUPON_REBUILD_LOCK_DETAIL = "coupon:rebuild:lock:detail";
     }
 
     public static class Cache {
-        /*锁TTL->秒*/
-        public static final long LOCK_TTL = 5L;
-        /*空值TTL->分钟*/
-        public static final long NULL_TTL = 5L;
+        /** Redis分布式锁默认TTL(分钟) */
+        public static final long LOCK_TTL_MIN = 1;
+        /** Redis 分布式锁前缀 */
+        public static final String LOCK_PREFIX = "lock:";
+    }
+
+    public static class Order {
+        /** 订单号自增计数前缀 */
+        public static final String ORDER_ID_PREFIX = "OrderId:";
     }
 
     public static class Parking {
-        /*管理端*/
-
         /** 停车场缓存信息*/
         public static final String PARKING_LOT_INFO = "parking:lot:info:";
         /** 停车场坐标信息*/
         public static final String PARKING_GEO = "parking:geo";
+        /** 车位状态Bitmap缓存前缀 */
         public static final String PARKING_SPOT_STATUS = "parking:spot:status:";
+        /** 车位列表缓存前缀 */
         public static final String PARKING_SPOT_LIST = "parking:spot:list:";
-        public static final long PARKING_SPOT_LIST_TTL = 600;
-        public static final String PARKING_LOT_AVAILABLE = "parking:lot:available:";
-        /** 车位空闲状态值 */
-        public static final String SPOT_STATUS_FREE = "0";
-        /** 车位占用状态值 */
-        public static final String SPOT_STATUS_OCCUPIED = "1";
-        /** 车位状态临时表后缀 */
-        public static final String SPOT_STATUS_TEMP_SUFFIX = "-temp";
-        /** 可用车位重建分布式锁前缀 */
-        public static final String PARKING_LOT_REBUILD_LOCK = "parking:lot:rebuild:available:";
+        /** 车位列表缓存TTL(分钟) */
+        public static final long PARKING_SPOT_LIST_TTL_MIN = 10;
+        /** 停车场可用车位数缓存(Hash结构) */
+        public static final String PARKING_AVAILABLE_SPOTS = "parking:availableSpots";
         /** 停车场返回数量*/
         public static final long PARKING_RETURN_NUMBER = 10;
         /** 新建停车场默认车位数 */
@@ -153,12 +154,25 @@ public class RedisConstant {
         /** 仪表盘计数缓存TTL(天) */
         public static final long DASHBOARD_COUNT_TTL_DAY = 1;
 
-        /*用户端*/
-        /*停车场缓存信息(不包含可用车位信息)*/
-        public static final String PARKING_INFO = "parking:info:";
-        /*停车场可用车位*/
-        public static final String PARKING_AVAILABLE_SPOTS = "parking:availableSpots";
-        /*Redis异常数据库查取停车场数据默认量*/
+        /** Redis异常数据库查取停车场数据默认量*/
         public static final long PARKING_DEFAULT_NUMBER = 20;
+        /** 分页默认页码 */
+        public static final int DEFAULT_PAGE = 1;
+        /** 分页默认每页条数 */
+        public static final int DEFAULT_PAGE_SIZE = 15;
+        /** 仪表盘最近订单查询条数 */
+        public static final int DASHBOARD_RECENT_ORDER_LIMIT = 10;
+        /** 停车场全量列表缓存 */
+        public static final String PARKING_LOT_LIST_ALL = "parking:lot:list:all";
+        /** 停车场全量列表缓存TTL(分钟) */
+        public static final long PARKING_LOT_LIST_ALL_TTL_MIN = 30;
+        /** 停车场信息缓存TTL(天) */
+        public static final long PARKING_LOT_INFO_TTL_DAY = 7;
+        /** Redis通知频道 */
+        public static final String NOTIFICATION_USER_CHANNEL = "notification:user";
+        /** 仪表盘今日订单数缓存 */
+        public static final String DASHBOARD_TODAY_ORDERS = "dashboard:today:orders";
+        /** 仪表盘今日收入缓存 */
+        public static final String DASHBOARD_TODAY_REVENUE = "dashboard:today:revenue";
     }
 }

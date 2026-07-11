@@ -15,7 +15,7 @@ public class ParkingSpot {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long lotId;
-    private Integer seq;
+    private Long seq;
     private String spotNumber;
     private Integer type;
     @TableField(fill = FieldFill.INSERT)

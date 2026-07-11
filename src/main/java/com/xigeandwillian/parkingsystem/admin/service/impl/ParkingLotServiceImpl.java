@@ -4,13 +4,16 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.LotSaveDTO;
-import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingLotService;
+import com.xigeandwillian.parkingsystem.admin.service.ParkingLotService;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotListVO;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotNameListVO;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
+import com.xigeandwillian.parkingsystem.admin.mq.ParkingLotCacheInitEvent;
 import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
+import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
@@ -22,13 +25,13 @@ import com.xigeandwillian.parkingsystem.common.result.PageResult;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.geo.Point;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -44,10 +47,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ParkingLotServiceImpl implements ParkingLotService {
 
+    private final ParkingLotConverter parkingLotConverter;
     private final ParkingLotMapper parkingLotMapper;
     private final ParkingSpotMapper parkingSpotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private final RabbitTemplate rabbitTemplate;
 
     private final CacheManager cacheManager;
     private static final DefaultRedisScript<Long> REBUILD_SCRIPT;
@@ -69,17 +74,14 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         queryWrapper.select(ParkingLot::getId, ParkingLot::getName);
         List<ParkingLot> lots = parkingLotMapper.selectList(queryWrapper);
         List<LotNameListVO> voList = lots.stream().map(lot -> {
-            LotNameListVO vo = new LotNameListVO();
-            vo.setId(lot.getId());
-            vo.setName(lot.getName());
-            return vo;
+            return parkingLotConverter.toNameListVO(lot);
         }).collect(Collectors.toList());
         return Result.ok(voList);
     }
 
     /**
      * 新增停车场
-     * 事务提交后在 GEO 集合中添加坐标
+     * DB 插入后发 MQ 消息异步初始化 GEO 缓存，失败走死信队列重试
      */
     @Override
     @CacheEvict(cacheNames = {CacheConstant.PARKING_LOT_NAME_LIST, CacheConstant.PARKING_LOT_LIST},
@@ -87,18 +89,14 @@ public class ParkingLotServiceImpl implements ParkingLotService {
     @Transactional(rollbackFor = Exception.class)
     public Result createParkingLot(LotSaveDTO lotSaveDTO) {
         try {
-            ParkingLot parkingLot = new ParkingLot();
-            BeanUtils.copyProperties(lotSaveDTO, parkingLot);
+            ParkingLot parkingLot = parkingLotConverter.toEntity(lotSaveDTO);
             parkingLot.setTotalSpots(RedisConstant.Parking.DEFAULT_TOTAL_SPOTS);
             parkingLot.setAvailableSpots(RedisConstant.Parking.DEFAULT_TOTAL_SPOTS);
             parkingLotMapper.insert(parkingLot);
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    stringRedisTemplate.opsForGeo().add(RedisConstant.Parking.PARKING_GEO, new Point(parkingLot.getLongitude().doubleValue(), parkingLot.getLatitude().doubleValue()), parkingLot.getId().toString());
-                    stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_LOT_COUNT);
-                }
-            });
+            rabbitTemplate.convertAndSend(MQConstant.PARKING_LOT_CACHE_INIT_DELAY_QUEUE,
+                    new ParkingLotCacheInitEvent(parkingLot.getId(),
+                            parkingLot.getLongitude().doubleValue(),
+                            parkingLot.getLatitude().doubleValue(), 0));
             log.info("新增停车场: lotId={}", parkingLot.getId());
             return Result.ok();
         } catch (Exception e) {
@@ -138,8 +136,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                 throw new BusinessException(ResultConstant.BAD_REQUEST, "没有信息被修改");
             }
 
-            ParkingLot parkingLot = new ParkingLot();
-            BeanUtils.copyProperties(lotSaveDTO, parkingLot);
+            ParkingLot parkingLot = parkingLotConverter.toEntity(lotSaveDTO);
             parkingLot.setId(id);
             parkingLotMapper.updateById(parkingLot);
 
@@ -183,7 +180,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
     @Transactional(rollbackFor = Exception.class)
     public Result deleteParkingLot(Long id) {
         String s = stringRedisTemplate.opsForValue().get(RedisConstant.Parking.PARKING_LOT_INFO + id);
-        Object count = stringRedisTemplate.opsForHash().get(RedisConstant.Parking.PARKING_LOT_AVAILABLE, id.toString());
+        Object count = stringRedisTemplate.opsForHash().get(RedisConstant.Parking.PARKING_AVAILABLE_SPOTS, id.toString());
         //删除停车场之前去查找缓存查找停车场信息和可用车位，如果都是有数据，可以直接去用车位总数和可用车位数比对判断能不能删除
         //如果没有数据，我们去查询订单信息，该停车场是否存在未结算的订单
         if (s == null || count == null) {
@@ -223,15 +220,12 @@ public class ParkingLotServiceImpl implements ParkingLotService {
                             //4.停车场geo  5.停车场静态信息缓存  6.车位静态信息缓存
                             stringRedisTemplate.delete(RedisConstant.Parking.PARKING_LOT_INFO + id);
                             stringRedisTemplate.opsForGeo().remove(RedisConstant.Parking.PARKING_GEO, id.toString());
-                            stringRedisTemplate.opsForHash().delete(RedisConstant.Parking.PARKING_LOT_AVAILABLE, id.toString());
+                            stringRedisTemplate.opsForHash().delete(RedisConstant.Parking.PARKING_AVAILABLE_SPOTS, id.toString());
                             stringRedisTemplate.delete(RedisConstant.Parking.PARKING_SPOT_STATUS + id);
+                            stringRedisTemplate.delete(RedisConstant.Parking.PARKING_LOT_LIST_ALL);
                             Cache nameListCache = cacheManager.getCache(CacheConstant.PARKING_LOT_NAME_LIST);
                             if (nameListCache != null) {
                                 nameListCache.clear();
-                            }
-                            Cache spotListCache = cacheManager.getCache(CacheConstant.PARKING_SPOT_LIST);
-                            if (spotListCache != null) {
-                                spotListCache.evict(id);
                             }
                             stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_LOT_COUNT);
                             stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_SPOT_COUNT);
@@ -258,7 +252,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         if (keyword != null && keyword.length() > RedisConstant.Parking.KEYWORD_MAX_LENGTH) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "关键字过长");
         }
-        Page<ParkingLot> p = new Page<>(page != null ? page : 1, size != null ? size : 15);
+        Page<ParkingLot> p = new Page<>(page != null ? page : RedisConstant.Parking.DEFAULT_PAGE, size != null ? size : RedisConstant.Parking.DEFAULT_PAGE_SIZE);
         LambdaQueryWrapper<ParkingLot> wrapper = new LambdaQueryWrapper<>();
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.and(w -> w.like(ParkingLot::getName, keyword)
@@ -269,8 +263,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         }
         Page<ParkingLot> result = parkingLotMapper.selectPage(p, wrapper);
         List<LotListVO> voList = result.getRecords().stream().map(lot->{
-            LotListVO vo =new LotListVO();
-            BeanUtils.copyProperties(lot, vo);
+            LotListVO vo = parkingLotConverter.toListVO(lot);
             return vo;
         }).collect(Collectors.toList());
         PageResult<LotListVO> pageResult = new PageResult<>();

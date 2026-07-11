@@ -6,28 +6,32 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
+import com.xigeandwillian.parkingsystem.common.mapper.UserConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.UserMapper;
-import com.xigeandwillian.parkingsystem.client.service.service.UserService;
-import com.xigeandwillian.parkingsystem.client.vo.user.AuthorizeVO;
+import com.xigeandwillian.parkingsystem.common.mapper.WalletMapper;
+import com.xigeandwillian.parkingsystem.common.entity.Wallet;
+import com.xigeandwillian.parkingsystem.client.service.UserService;
+import com.xigeandwillian.parkingsystem.client.vo.auth.AuthorizeVO;
 import com.xigeandwillian.parkingsystem.client.vo.user.UserVO;
 import com.xigeandwillian.parkingsystem.common.constant.JwtClaimsConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.User;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
 import com.xigeandwillian.parkingsystem.common.result.Result;
-import com.xigeandwillian.parkingsystem.common.service.service.RedisService;
+import com.xigeandwillian.parkingsystem.common.service.RedisService;
 import com.xigeandwillian.parkingsystem.common.utils.JwtUtil;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.DigestUtils;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
@@ -40,7 +44,9 @@ public class UserServiceImpl implements UserService {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final UserMapper userMapper;
+    private final WalletMapper walletMapper;
     private final JwtUtil jwtUtil;
+    private final UserConverter userConverter;
     private final RedisService redisService;
 
     /**
@@ -58,6 +64,7 @@ public class UserServiceImpl implements UserService {
             stringRedisTemplate.opsForValue().set(key, code, RedisConstant.User.USER_CODE_TTL_MIN, TimeUnit.MINUTES);
         } catch (Exception e) {
             log.error("保存验证码失败", e);
+            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后重试");
         }
 
         return Result.ok();
@@ -77,11 +84,11 @@ public class UserServiceImpl implements UserService {
         String phone = registerDTO.getPhone();
         String key = RedisConstant.User.USER_REGISTER_PHONE + phone;
 
-        Boolean registered = redisService.hasKey(key);
-        if (registered == null) {
+        CacheResult<Boolean> registeredResult = redisService.hasKey(key);
+        if (registeredResult.isError()) {
             log.error("查询注册状态失败");
-        } else if (registered) {
-            redisService.expire(key, RedisConstant.User.USER_REGISTER_PHONE_TTL_DAY, TimeUnit.DAYS);
+        } else if (registeredResult.isHit() && Boolean.TRUE.equals(registeredResult.getData())) {
+            redisService.expire(key, RedisConstant.User.USER_REGISTER_PHONE_TTL_MIN, TimeUnit.MINUTES);
             log.warn("手机号已经被注册了~");
             throw new BusinessException(ResultConstant.BAD_REQUEST, "手机号已经被注册了~");
         }
@@ -103,8 +110,7 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "验证码错误");
         }
 
-        User user = new User();
-        BeanUtils.copyProperties(registerDTO, user);
+        User user = userConverter.toEntity(registerDTO);
         user.setPassword(DigestUtils.md5DigestAsHex(registerDTO.getPassword().getBytes(StandardCharsets.UTF_8)));
 
         // 利用手机号唯一约束，插入成功即注册、失败说明已注册
@@ -113,16 +119,20 @@ public class UserServiceImpl implements UserService {
         } catch (DuplicateKeyException e) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "手机号已经被注册了~");
         } catch (Exception e) {
+            log.error("用户注册异常: phone={}", registerDTO.getPhone(), e);
             throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "服务器异常，请稍后重试");
         }
+        //创建钱包
+        Wallet wallet = new Wallet();
+        wallet.setUserId(user.getId());
+        wallet.setBalance(BigDecimal.ZERO);
+        walletMapper.insert(wallet);
         //验证成功，删除验证码，防止被重复使用
         redisService.delete(RedisConstant.User.USER_PHONE_CODE + phone);
         //标记手机号被注册
-        redisService.set(key, "1", RedisConstant.User.USER_REGISTER_PHONE_TTL_DAY, TimeUnit.DAYS);
+        redisService.set(key, "1", RedisConstant.User.USER_REGISTER_PHONE_TTL_MIN, TimeUnit.MINUTES);
         String token = jwtUtil.createJWT(user.getId().toString(), Map.of(JwtClaimsConstant.ROLE, JwtClaimsConstant.ROLE_USER));
-        UserVO userVO = new UserVO();
-
-        BeanUtils.copyProperties(user, userVO);
+        UserVO userVO = userConverter.toVO(user);
         redisService.set(RedisConstant.User.USER_SESSION_PREFIX + user.getId(), JSONUtil.toJsonStr(userVO), RedisConstant.User.USER_SESSION_TTL_HOUR, TimeUnit.HOURS);
 
         log.info("注册成功!");
@@ -144,11 +154,12 @@ public class UserServiceImpl implements UserService {
         String lockKey = RedisConstant.User.USER_LOGIN_LOCK + username;
         String key = RedisConstant.User.USER_LOGIN_COUNT + username;
 
-        Boolean isLock = redisService.hasKey(lockKey);
-        if (isLock == null) {
+        CacheResult<Boolean> isLockResult = redisService.hasKey(lockKey);
+        if (isLockResult.isError()) {
             log.error("检测登录锁定失败");
+            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
         }
-        if (isLock != null && isLock) {
+        if (isLockResult.isHit() && Boolean.TRUE.equals(isLockResult.getData())) {
             throw new BusinessException(ResultConstant.UNAUTHORIZED, "错误尝试过多，请5分钟后再试!");
         }
 
@@ -156,15 +167,17 @@ public class UserServiceImpl implements UserService {
         String secretPassword = DigestUtils.md5DigestAsHex(password.getBytes(StandardCharsets.UTF_8));
 
         if (user == null || !secretPassword.equals(user.getPassword())) {
-            Long count = redisService.increment(key);
-            if (count == null) {
+            CacheResult<Long> countResult = redisService.increment(key);
+            if (countResult.isError()) {
                 log.error("记录登录次数失败");
                 throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
             }
+            long count = countResult.getData();
 
             if (count == 1) {
-                if (redisService.expire(key, RedisConstant.User.USER_LOGIN_COUNT_TTL_DAY, TimeUnit.DAYS) == null) {
+                if (redisService.expire(key, RedisConstant.User.USER_LOGIN_COUNT_TTL_DAY, TimeUnit.DAYS).isError()) {
                     log.error("设置计数过期失败");
+                    throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
                 }
             }
 
@@ -179,11 +192,13 @@ public class UserServiceImpl implements UserService {
         Long userId = user.getId();
         String token = jwtUtil.createJWT(user.getId().toString(), Map.of(JwtClaimsConstant.ROLE, JwtClaimsConstant.ROLE_USER));
 
-        UserVO userVO = new UserVO();
-        BeanUtils.copyProperties(user, userVO);
+        UserVO userVO = userConverter.toVO(user);
 
         redisService.delete(key);
-        redisService.set(RedisConstant.User.USER_SESSION_PREFIX + userId, JSONUtil.toJsonStr(userVO), RedisConstant.User.USER_SESSION_TTL_HOUR, TimeUnit.HOURS);
+        if (redisService.set(RedisConstant.User.USER_SESSION_PREFIX + userId, JSONUtil.toJsonStr(userVO), RedisConstant.User.USER_SESSION_TTL_HOUR, TimeUnit.HOURS).isError()) {
+            log.error("保存用户session失败: userId={}", userId);
+            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+        }
 
         return Result.ok(new AuthorizeVO(token, userVO));
     }
@@ -196,10 +211,14 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result userProfile() {
         long userId = UserHolder.get();
-        String s = redisService.get(RedisConstant.User.USER_SESSION_PREFIX + userId);
-        if (s == null) {
+        CacheResult<String> sessionResult = redisService.get(RedisConstant.User.USER_SESSION_PREFIX + userId);
+        if (sessionResult.isError()) {
+            throw new BusinessException(ResultConstant.INTERNAL_SERVER_ERROR, "系统繁忙，请稍后再试");
+        }
+        if (sessionResult.isMiss()) {
             throw new BusinessException(ResultConstant.UNAUTHORIZED, "用户信息不存在");
         }
+        String s = sessionResult.getData();
         UserVO userVO = JSONUtil.toBean(s, UserVO.class);
         return Result.ok(userVO);
     }
@@ -214,8 +233,11 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public Result editProfile(ProfileEditDTO profileEditDTO) {
         long userId = UserHolder.get();
-        String str = redisService.get(RedisConstant.User.USER_EDIT_TIMES + userId);
-        long times = str == null ? 0 : Long.parseLong(str);
+        CacheResult<String> editTimesResult = redisService.get(RedisConstant.User.USER_EDIT_TIMES + userId);
+        if (editTimesResult.isError()) {
+            log.error("查询修改次数失败: userId={}", userId);
+        }
+        long times = editTimesResult.isHit() ? Long.parseLong(editTimesResult.getData()) : 0;
 
         if (times >= RedisConstant.User.USER_EDIT_LIMIT) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "本月已修改个人信息两次!");
@@ -223,16 +245,24 @@ public class UserServiceImpl implements UserService {
 
         // DB 更新 + 缓存覆盖（用户名不可修改）
         userMapper.update(null, Wrappers.<User>lambdaUpdate().eq(User::getId, userId).set(User::getPhone, profileEditDTO.getPhone()).set(User::getAvatar, profileEditDTO.getAvatar()));
-        UserVO newUserVO = new UserVO();
         User newUser = userMapper.selectById(userId);
-        BeanUtils.copyProperties(newUser, newUserVO);
+        UserVO newUserVO = userConverter.toVO(newUser);
         redisService.set(RedisConstant.User.USER_SESSION_PREFIX + userId, JSONUtil.toJsonStr(newUserVO), RedisConstant.User.USER_SESSION_TTL_HOUR, TimeUnit.HOURS);
-        Long increment = redisService.increment(RedisConstant.User.USER_EDIT_TIMES + userId);
-        if (increment != null && increment == 1) {
+        CacheResult<Long> incrementResult = redisService.increment(RedisConstant.User.USER_EDIT_TIMES + userId);
+        if (incrementResult.isHit() && incrementResult.getData() == 1) {
             redisService.expire(RedisConstant.User.USER_EDIT_TIMES + userId, RedisConstant.User.USER_EDIT_TIMES_TTL_DAY, TimeUnit.DAYS);
         }
         return Result.ok(newUserVO);
     }
 
+    @Override
+    public Result logout() {
+        Long userId = UserHolder.get();
+        if (userId != null) {
+            redisService.delete(RedisConstant.User.USER_SESSION_PREFIX + userId);
+            log.info("用户退出登录: userId={}", userId);
+        }
+        return Result.ok();
+    }
 
 }

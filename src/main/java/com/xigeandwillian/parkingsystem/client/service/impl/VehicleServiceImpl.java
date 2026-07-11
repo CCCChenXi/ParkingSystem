@@ -1,12 +1,13 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.xigeandwillian.parkingsystem.client.dto.user.VehicleDTO;
-import com.xigeandwillian.parkingsystem.client.service.service.VehicleService;
+import com.xigeandwillian.parkingsystem.client.service.VehicleService;
 import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Vehicle;
+import com.xigeandwillian.parkingsystem.common.mapper.VehicleConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.VehicleMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
@@ -23,6 +24,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VehicleServiceImpl implements VehicleService {
 
+    private final VehicleConverter vehicleConverter;
     private final VehicleMapper vehicleMapper;
 
     @Resource(name = "vehicleCache")
@@ -54,8 +56,7 @@ public class VehicleServiceImpl implements VehicleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result addVehicle(VehicleDTO vehicleDTO) {
-        Vehicle vehicle = new Vehicle();
-        BeanUtil.copyProperties(vehicleDTO, vehicle);
+        Vehicle vehicle = vehicleConverter.toEntity(vehicleDTO);
         vehicle.setUserId(UserHolder.get());
         vehicleMapper.insert(vehicle);
         vehicleCache.invalidate(CaffeineConstant.VEHICLE_KEY + vehicle.getUserId());
@@ -85,8 +86,7 @@ public class VehicleServiceImpl implements VehicleService {
      */
     @Override
     public Result updateVehicle(VehicleDTO vehicleDTO, Long id) {
-        Vehicle vehicle = new Vehicle();
-        BeanUtil.copyProperties(vehicleDTO, vehicle);
+        Vehicle vehicle = vehicleConverter.toEntity(vehicleDTO);
         vehicle.setId(id);
         vehicleMapper.updateById(vehicle);
         vehicleCache.invalidate(CaffeineConstant.VEHICLE_KEY + UserHolder.get());

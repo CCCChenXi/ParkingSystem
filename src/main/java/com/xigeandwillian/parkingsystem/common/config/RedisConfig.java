@@ -3,6 +3,7 @@ package com.xigeandwillian.parkingsystem.common.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
+import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +15,8 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 @EnableCaching
@@ -30,14 +33,25 @@ public class RedisConfig {
 
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
 
-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+        RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofHours(1))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
                 .disableCachingNullValues();
 
+        RedisCacheConfiguration twoMinConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMinutes(2))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(serializer))
+                .disableCachingNullValues();
+
+        Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
+        cacheConfigurations.put(CacheConstant.PARKING_LOT_NAME_LIST, twoMinConfig);
+        cacheConfigurations.put(CacheConstant.PARKING_LOT_LIST, twoMinConfig);
+
         return RedisCacheManager.builder(factory)
-                .cacheDefaults(config)
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(cacheConfigurations)
                 .build();
     }
 }

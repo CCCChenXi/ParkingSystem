@@ -3,8 +3,9 @@ package com.xigeandwillian.parkingsystem.admin.service.impl;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.xigeandwillian.parkingsystem.admin.dto.auth.AdminCreateDTO;
 import com.xigeandwillian.parkingsystem.admin.mapper.AuthMapper;
-import com.xigeandwillian.parkingsystem.admin.service.Service.AdminManageService;
+import com.xigeandwillian.parkingsystem.admin.service.AdminManageService;
 import com.xigeandwillian.parkingsystem.admin.vo.auth.AdminListVO;
+import com.xigeandwillian.parkingsystem.common.mapper.AdminConverter;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Admin;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
@@ -26,18 +27,14 @@ public class AdminManageServiceImpl implements AdminManageService {
     private static final String ROLE_SUPER = "super";
     private static final String ROLE_OPERATOR = "operator";
 
+    private final AdminConverter adminConverter;
     private final AuthMapper authMapper;
 
     @Override
     public Result list() {
         List<Admin> adminList = authMapper.selectList(null);
         List<AdminListVO> voList = adminList.stream().map(admin -> {
-            AdminListVO vo = new AdminListVO();
-            vo.setId(admin.getId());
-            vo.setUsername(admin.getUsername());
-            vo.setRole(admin.getRole());
-            vo.setCreateTime(admin.getCreateTime());
-            return vo;
+            return adminConverter.toListVO(admin);
         }).collect(Collectors.toList());
         return Result.ok(voList);
     }
@@ -52,11 +49,7 @@ public class AdminManageServiceImpl implements AdminManageService {
             log.warn("管理员不存在: id={}", id);
             throw new BusinessException(ResultConstant.BAD_REQUEST, "管理员不存在");
         }
-        AdminListVO vo = new AdminListVO();
-        vo.setId(admin.getId());
-        vo.setUsername(admin.getUsername());
-        vo.setRole(admin.getRole());
-        vo.setCreateTime(admin.getCreateTime());
+        AdminListVO vo = adminConverter.toListVO(admin);
         return Result.ok(vo);
     }
 
@@ -77,10 +70,8 @@ public class AdminManageServiceImpl implements AdminManageService {
         String encrypted = DigestUtils.md5DigestAsHex(
                 dto.getPassword().getBytes(StandardCharsets.UTF_8));
 
-        Admin admin = new Admin();
-        admin.setUsername(dto.getUsername());
+        Admin admin = adminConverter.toEntity(dto);
         admin.setPassword(encrypted);
-        admin.setRole(role);
         authMapper.insert(admin);
 
         log.info("新增管理员成功: username={}, role={}, id={}", dto.getUsername(), role, admin.getId());

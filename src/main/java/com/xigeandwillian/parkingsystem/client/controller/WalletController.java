@@ -1,12 +1,11 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
-import com.xigeandwillian.parkingsystem.client.service.service.WalletService;
+import com.xigeandwillian.parkingsystem.client.dto.wallet.RechargeDTO;
+import com.xigeandwillian.parkingsystem.client.service.WalletService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
@@ -27,14 +26,25 @@ public class WalletController {
         return walletService.info();
     }
 
+    /**
+     * 钱包充值
+     *
+     * @return
+     */
+    @PostMapping("/recharge")
+    public Result recharge(@RequestBody RechargeDTO dto) {
+        log.info("钱包充值: {}", dto.getAmount());
+        return walletService.recharge(dto.getAmount());
+    }
+
 
     /**
      * 获取钱包流水
      *
      * @return
      */
-    @GetMapping("/log")
-    public Result walletLog(){
+    @GetMapping("/logs")
+    public Result walletLog() {
         log.info("获取钱包流水");
         return walletService.walletLog();
     }

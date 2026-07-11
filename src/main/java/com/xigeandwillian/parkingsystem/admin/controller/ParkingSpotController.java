@@ -2,7 +2,7 @@ package com.xigeandwillian.parkingsystem.admin.controller;
 
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotInsertDTO;
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotUpdateDTO;
-import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingSpotService;
+import com.xigeandwillian.parkingsystem.admin.service.ParkingSpotService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

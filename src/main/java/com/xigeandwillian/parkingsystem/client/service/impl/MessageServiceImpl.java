@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.xigeandwillian.parkingsystem.client.service.service.MessageService;
+import com.xigeandwillian.parkingsystem.client.service.MessageService;
 import com.xigeandwillian.parkingsystem.common.entity.Message;
 import com.xigeandwillian.parkingsystem.common.mapper.MessageMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;

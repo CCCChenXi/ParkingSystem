@@ -1,9 +1,10 @@
 package com.xigeandwillian.parkingsystem.admin.service.impl;
 
 import com.xigeandwillian.parkingsystem.admin.dto.coupon.CouponSaveDTO;
-import com.xigeandwillian.parkingsystem.client.service.impl.CouponDataProvider;
+import com.xigeandwillian.parkingsystem.common.service.impl.CouponDataProvider;
+import com.xigeandwillian.parkingsystem.common.mapper.CouponConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.CouponMapper;
-import com.xigeandwillian.parkingsystem.admin.service.Service.AdminCouponService;
+import com.xigeandwillian.parkingsystem.admin.service.AdminCouponService;
 import com.xigeandwillian.parkingsystem.admin.vo.coupon.CouponListVO;
 import com.xigeandwillian.parkingsystem.common.constant.CouponConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 @Service
 public class AdminCouponServiceImpl implements AdminCouponService {
 
+    private final CouponConverter couponConverter;
     private final CouponMapper couponMapper;
     private final CouponDataProvider dataProvider;
 
@@ -37,16 +39,7 @@ public class AdminCouponServiceImpl implements AdminCouponService {
     public Result create(CouponSaveDTO dto) {
         validateParams(dto);
 
-        Coupon coupon = new Coupon();
-        coupon.setName(dto.getName());
-        coupon.setDescription(dto.getDescription() != null ? dto.getDescription() : "");
-        coupon.setDiscountAmount(dto.getDiscountAmount());
-        coupon.setMinAmount(dto.getMinAmount() != null ? dto.getMinAmount() : BigDecimal.ZERO);
-        coupon.setType(dto.getType());
-        coupon.setStock(dto.getStock());
-        coupon.setRemainStock(dto.getStock());
-        coupon.setStartTime(dto.getStartTime());
-        coupon.setEndTime(dto.getEndTime());
+        Coupon coupon = couponConverter.toEntity(dto);
 
         couponMapper.insert(coupon);
 
@@ -54,6 +47,7 @@ public class AdminCouponServiceImpl implements AdminCouponService {
             dataProvider.initSecKillStock(coupon.getId(), dto.getStock());
         }
 
+        dataProvider.invalidateAvailable();
         log.info("新增优惠券成功: name={}, id={}", dto.getName(), coupon.getId());
         return Result.ok();
     }
@@ -67,16 +61,8 @@ public class AdminCouponServiceImpl implements AdminCouponService {
 
         validateParams(dto);
 
-        Coupon coupon = new Coupon();
+        Coupon coupon = couponConverter.toEntity(dto);
         coupon.setId(id);
-        coupon.setName(dto.getName());
-        coupon.setDescription(dto.getDescription() != null ? dto.getDescription() : "");
-        coupon.setDiscountAmount(dto.getDiscountAmount());
-        coupon.setMinAmount(dto.getMinAmount() != null ? dto.getMinAmount() : BigDecimal.ZERO);
-        coupon.setType(dto.getType());
-        coupon.setStock(dto.getStock());
-        coupon.setStartTime(dto.getStartTime());
-        coupon.setEndTime(dto.getEndTime());
 
         couponMapper.updateById(coupon);
 
@@ -89,6 +75,7 @@ public class AdminCouponServiceImpl implements AdminCouponService {
         }
 
         invalidateDetailCache();
+        dataProvider.invalidateAvailable();
         log.info("更新优惠券成功: id={}", id);
         return Result.ok();
     }
@@ -103,6 +90,7 @@ public class AdminCouponServiceImpl implements AdminCouponService {
         couponMapper.deleteById(id);
 
         invalidateDetailCache();
+        dataProvider.invalidateAvailable();
         log.info("删除优惠券成功: id={}", id);
         return Result.ok();
     }
@@ -125,17 +113,6 @@ public class AdminCouponServiceImpl implements AdminCouponService {
     }
 
     private CouponListVO toVO(Coupon coupon) {
-        CouponListVO vo = new CouponListVO();
-        vo.setId(coupon.getId());
-        vo.setName(coupon.getName());
-        vo.setDescription(coupon.getDescription());
-        vo.setDiscountAmount(coupon.getDiscountAmount());
-        vo.setMinAmount(coupon.getMinAmount());
-        vo.setType(coupon.getType());
-        vo.setStock(coupon.getStock());
-        vo.setRemainStock(coupon.getRemainStock());
-        vo.setStartTime(coupon.getStartTime());
-        vo.setEndTime(coupon.getEndTime());
-        return vo;
+        return couponConverter.toListVO(coupon);
     }
 }

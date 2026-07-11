@@ -1,6 +1,6 @@
 package com.xigeandwillian.parkingsystem.admin.controller;
 
-import com.xigeandwillian.parkingsystem.admin.service.Service.DashboardService;
+import com.xigeandwillian.parkingsystem.admin.service.DashboardService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

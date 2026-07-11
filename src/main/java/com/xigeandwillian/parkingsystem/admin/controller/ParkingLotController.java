@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.admin.controller;
 
 import com.xigeandwillian.parkingsystem.admin.dto.parkinglot.LotSaveDTO;
-import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingLotService;
+import com.xigeandwillian.parkingsystem.admin.service.ParkingLotService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +17,7 @@ public class ParkingLotController {
 
     @GetMapping()
     public Result listParkingLots(Integer page,Integer size,String keyword,Integer status){
-        log.info("获取停车场信息");
+        log.info("获取停车场信息: page={}, size={}, keyword={}, status={}", page, size, keyword, status);
         return parkingLotService.listParkingLots(page,size,keyword,status);
     }
 

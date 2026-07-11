@@ -1,6 +1,6 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
-import com.xigeandwillian.parkingsystem.client.service.service.CouponService;
+import com.xigeandwillian.parkingsystem.client.service.CouponService;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.Result;

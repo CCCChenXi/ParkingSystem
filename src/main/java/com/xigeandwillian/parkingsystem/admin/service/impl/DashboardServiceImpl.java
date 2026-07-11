@@ -4,7 +4,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.xigeandwillian.parkingsystem.admin.service.Service.DashboardService;
+import com.xigeandwillian.parkingsystem.admin.service.DashboardService;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.DashboardVO;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.RecentOrderVO;
 import com.xigeandwillian.parkingsystem.admin.vo.dashboard.TrendVO;
@@ -119,6 +119,15 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private Integer getTodayOrders(LocalDate today) {
+        try {
+            String val = stringRedisTemplate.opsForValue()
+                    .get(RedisConstant.Parking.DASHBOARD_TODAY_ORDERS);
+            if (val != null) {
+                return Integer.parseInt(val);
+            }
+        } catch (Exception e) {
+            log.warn("从缓存获取今日订单数失败，降级数据库", e);
+        }
         LocalDateTime start = today.atStartOfDay();
         LocalDateTime end = today.plusDays(1).atStartOfDay();
         LambdaQueryWrapper<ParkingOrder> wrapper = new LambdaQueryWrapper<>();
@@ -128,6 +137,15 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private BigDecimal getTodayRevenue(LocalDate today) {
+        try {
+            String val = stringRedisTemplate.opsForValue()
+                    .get(RedisConstant.Parking.DASHBOARD_TODAY_REVENUE);
+            if (val != null) {
+                return new BigDecimal(val);
+            }
+        } catch (Exception e) {
+            log.warn("从缓存获取今日收入失败，降级数据库", e);
+        }
         LocalDateTime start = today.atStartOfDay();
         LocalDateTime end = today.plusDays(1).atStartOfDay();
         LambdaQueryWrapper<ParkingOrder> wrapper = new LambdaQueryWrapper<>();
@@ -148,14 +166,8 @@ public class DashboardServiceImpl implements DashboardService {
         for (int i = 0; i < 7; i++) {
             LocalDate date = startDate.plusDays(i);
             String dateStr = date.format(DAY_FORMAT);
-
-            if (date.equals(today)) {
-                TrendVO vo = getTrendFromDb(date, dateStr);
-                result.add(vo);
-            } else {
-                TrendVO vo = getPastDayTrend(date, dateStr);
-                result.add(vo);
-            }
+            TrendVO vo = getPastDayTrend(date, dateStr);
+            result.add(vo);
         }
         return result;
     }
@@ -218,7 +230,7 @@ public class DashboardServiceImpl implements DashboardService {
     private List<RecentOrderVO> getRecentOrders() {
         LambdaQueryWrapper<ParkingOrder> wrapper = new LambdaQueryWrapper<>();
         wrapper.orderByDesc(ParkingOrder::getCreateTime)
-                .last("LIMIT 10");
+                .last("LIMIT " + RedisConstant.Parking.DASHBOARD_RECENT_ORDER_LIMIT);
         List<ParkingOrder> orders = parkingOrderMapper.selectList(wrapper);
 
         Map<Long, String> lotNameMap = new HashMap<>();

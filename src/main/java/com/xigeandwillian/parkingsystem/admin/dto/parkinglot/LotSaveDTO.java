@@ -24,4 +24,7 @@ public class LotSaveDTO {
 
     @NotNull(message = "状态不能为空")
     private Integer status;
+
+    @NotNull(message = "每小时费用不能为空")
+    private BigDecimal hourlyRate;
 }

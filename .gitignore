@@ -32,5 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# ====================== 敏感配置 ======================
-application.yaml
+# ====================== 敏感配置（已提交 example 模板） ======================
+/src/main/resources/application.yaml
+!application-example.yaml
+
+# ====================== 日志 ======================
+*.log
+logs/
+
+# ====================== 操作系统 ======================
+.DS_Store
+Thumbs.db

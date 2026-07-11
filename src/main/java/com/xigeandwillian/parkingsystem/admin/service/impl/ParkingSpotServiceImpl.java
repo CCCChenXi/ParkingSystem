@@ -6,24 +6,24 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotInsertDTO;
 import com.xigeandwillian.parkingsystem.admin.dto.parkingspot.SpotUpdateDTO;
 import com.xigeandwillian.parkingsystem.admin.mq.ParkingSpotCacheRetryEvent;
-import com.xigeandwillian.parkingsystem.admin.service.Service.ParkingSpotService;
-import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
-import com.xigeandwillian.parkingsystem.client.mq.CacheInvalidateEvent;
-import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
-import com.xigeandwillian.parkingsystem.common.config.RabbitMQConfig;
+import com.xigeandwillian.parkingsystem.admin.service.ParkingSpotService;
+import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
+import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateEvent;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
+import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.BeanUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, ParkingSpot> implements ParkingSpotService {
+    private final ParkingSpotConverter parkingSpotConverter;
     private final ParkingLotMapper parkingLotMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final ParkingDataProvider parkingDataProvider;
@@ -83,8 +84,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
     public Result updateParkingSpot(Long lotId, Long id, SpotUpdateDTO spotUpdateDTO) {
         log.info("更新车位: lotId={}, id={}", lotId, id);
         try {
-            ParkingSpot parkingSpot = new ParkingSpot();
-            BeanUtils.copyProperties(spotUpdateDTO, parkingSpot);
+            ParkingSpot parkingSpot = parkingSpotConverter.toEntity(spotUpdateDTO);
             parkingSpot.setId(id);
             parkingSpot.setLotId(lotId);
             baseMapper.update(parkingSpot,
@@ -96,7 +96,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
                         public void afterCommit() {
                             clearSpotCacheAndBroadcast(lotId,
                                     () -> stringRedisTemplate.delete(RedisConstant.Parking.PARKING_SPOT_LIST + lotId),
-                                    RabbitMQConfig.PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE);
+                                    MQConstant.PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE);
                         }
                     });
             return Result.ok();
@@ -135,7 +135,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
                 throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在，新增车位失败");
             }
 
-            Integer seq=lot.getTotalSpots();
+            long seq = lot.getTotalSpots();
 
             // 2. 组装车位列表
             List<ParkingSpot> spots = spotInsertDTO.getSpotNumbers().stream().map(number -> {
@@ -172,7 +172,8 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
                                 stringRedisTemplate.delete(RedisConstant.Parking.PARKING_SPOT_STATUS + lotId);
                                 stringRedisTemplate.delete(RedisConstant.Parking.PARKING_LOT_INFO + lotId);
                                 stringRedisTemplate.delete(RedisConstant.Parking.DASHBOARD_SPOT_COUNT);
-                            }, RabbitMQConfig.PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE);
+                                stringRedisTemplate.delete(RedisConstant.Parking.PARKING_LOT_LIST_ALL);
+                            }, MQConstant.PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE);
                         }
                     });
 
@@ -192,7 +193,7 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
         try {
             redisOps.run();
             log.info("Redis车位缓存清理成功: lotId={}", lotId);
-            rabbitTemplate.convertAndSend(RabbitMQConfig.CACHE_INVALIDATE_EXCHANGE, null,
+            rabbitTemplate.convertAndSend(MQConstant.CACHE_INVALIDATE_EXCHANGE, null,
                     new CacheInvalidateEvent(RedisConstant.Parking.PARKING_SPOT_LIST + lotId));
         } catch (Exception e) {
             log.warn("Redis车位缓存清理失败，发送到重试队列: lotId={}", lotId, e);

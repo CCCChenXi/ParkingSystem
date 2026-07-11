@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.admin.mq;
 
-import com.xigeandwillian.parkingsystem.client.mq.CacheInvalidateEvent;
-import com.xigeandwillian.parkingsystem.common.config.RabbitMQConfig;
+import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateEvent;
+import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,12 +15,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ParkingSpotCacheRetryConsumer {
 
-    private static final int MAX_RETRY = 10;
+
 
     private final StringRedisTemplate stringRedisTemplate;
     private final RabbitTemplate rabbitTemplate;
 
-    @RabbitListener(queues = RabbitMQConfig.PARKING_SPOT_CACHE_RETRY_PROC_QUEUE)
+    @RabbitListener(queues = MQConstant.PARKING_SPOT_CACHE_RETRY_PROC_QUEUE)
     public void handle(ParkingSpotCacheRetryEvent event) {
         Long lotId = event.getLotId();
         int retryCount = event.getRetryCount();
@@ -31,17 +31,17 @@ public class ParkingSpotCacheRetryConsumer {
             stringRedisTemplate.delete(RedisConstant.Parking.PARKING_SPOT_STATUS + lotId);
             stringRedisTemplate.delete(RedisConstant.Parking.PARKING_LOT_INFO + lotId);
             log.info("Redis缓存清理成功: lotId={}", lotId);
-            rabbitTemplate.convertAndSend(RabbitMQConfig.CACHE_INVALIDATE_EXCHANGE, null,
+            rabbitTemplate.convertAndSend(MQConstant.CACHE_INVALIDATE_EXCHANGE, null,
                     new CacheInvalidateEvent(RedisConstant.Parking.PARKING_SPOT_LIST + lotId));
         } catch (Exception e) {
             int nextRetry = retryCount + 1;
-            if (nextRetry < MAX_RETRY) {
+            if (nextRetry < MQConstant.DEFAULT_RETRY_MAX) {
                 log.warn("Redis缓存清理失败，第{}次重试: lotId={}", nextRetry, lotId, e);
                 rabbitTemplate.convertAndSend(event.getSourceQueue(),
                         new ParkingSpotCacheRetryEvent(lotId, nextRetry, event.getSourceQueue()));
             } else {
                 log.error("Redis缓存清理重试用尽，需人工介入: lotId={}", lotId, e);
-                rabbitTemplate.convertAndSend(RabbitMQConfig.PARKING_SPOT_CACHE_RETRY_EXCHANGE, "alert",
+                rabbitTemplate.convertAndSend(MQConstant.PARKING_SPOT_CACHE_RETRY_EXCHANGE, MQConstant.ALERT_ROUTING_KEY,
                         new ParkingSpotCacheRetryEvent(lotId, nextRetry, event.getSourceQueue()));
             }
         }

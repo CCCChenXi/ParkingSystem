@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.admin.controller;
 
 import com.xigeandwillian.parkingsystem.admin.dto.coupon.CouponSaveDTO;
-import com.xigeandwillian.parkingsystem.admin.service.Service.AdminCouponService;
+import com.xigeandwillian.parkingsystem.admin.service.AdminCouponService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,14 +1,16 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
+
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
-import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotCache;
-import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
-import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
-import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
+import com.xigeandwillian.parkingsystem.client.service.ParkingService;
+import com.xigeandwillian.parkingsystem.client.vo.parkinglot.ParkingLotCache;
+import com.xigeandwillian.parkingsystem.client.vo.parkinglot.ParkingLotVO;
+import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
+import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
@@ -31,6 +33,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
@@ -40,16 +43,23 @@ import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Par
 @RequiredArgsConstructor
 public class ParkingServiceImpl implements ParkingService {
 
+    private final ParkingLotConverter parkingLotConverter;
     private final ParkingLotMapper parkingLotMapper;
     private final ParkingDataProvider parkingDataProvider;
     private final StringRedisTemplate stringRedisTemplate;
 
     @Resource(name = "parkingLotCache")
     private Cache<Long, ParkingLotVO> localCache;
+    @Resource(name = "parkingLotListCache")
+    private Cache<String, List<ParkingLotVO>> parkingLotListCache;
     /*Caffeine空对象缓存*/
     private static final ParkingLotVO NULL_MARKER = new ParkingLotVO();
 
+
+
+
     /**
+     * ！！！已弃用！！！改为前端获取全部停车场列表，然后前端处理距离
      * 获取附近停车场列表
      *
      * @param longitude 经度
@@ -58,6 +68,7 @@ public class ParkingServiceImpl implements ParkingService {
      */
     @Override
     public Result parkingList(BigDecimal longitude, BigDecimal latitude, long radius) {
+        log.info("查询附近停车场: longitude={}, latitude={}, radius={}", longitude, latitude, radius);
 
         GeoResults<RedisGeoCommands.GeoLocation<String>> results = null;
         // 1.Geo 搜索附近停车场
@@ -74,6 +85,7 @@ public class ParkingServiceImpl implements ParkingService {
                                     .sortAscending()
                                     .limit(PARKING_RETURN_NUMBER)
                     );
+            log.info("GEO搜索到{}个停车场", results.getContent().size());
         } catch (Exception e) {
             log.error("获取停车场列表失败", e);
             // 降级：经纬度 1°≈111km，计算 bounding-box 查 DB
@@ -95,6 +107,7 @@ public class ParkingServiceImpl implements ParkingService {
                 .toList();
 
         if (ids.isEmpty()) {
+            log.warn("附近无停车场: longitude={}, latitude={}", longitude, latitude);
             throw new BusinessException(ResultConstant.BAD_REQUEST, "附近无停车场");
         }
 
@@ -107,7 +120,7 @@ public class ParkingServiceImpl implements ParkingService {
         //    全部命中   → 跳过
         try {
             List<String> keys = ids.stream()
-                    .map(id -> PARKING_INFO + id)
+                    .map(id -> PARKING_LOT_INFO + id)
                     .toList();
 
             List<String> jsonList = stringRedisTemplate.opsForValue().multiGet(keys);
@@ -116,9 +129,11 @@ public class ParkingServiceImpl implements ParkingService {
             long missCount = jsonList.stream().filter(Objects::isNull).count();
 
             if (missCount == ids.size()) {
+                log.info("缓存全部未命中，查DB回填: ids={}", ids);
                 List<ParkingLot> lotList = parkingLotMapper.selectByIds(ids);
 
                 // DB 返回顺序不一定与 ids 一致，按 id 建立映射
+                log.info("DB查到{}条停车场记录", lotList.size());
                 Map<Long, ParkingLot> lotMap = new HashMap<>();
                 for (ParkingLot lot : lotList) {
                     lotMap.put(lot.getId(), lot);
@@ -132,13 +147,13 @@ public class ParkingServiceImpl implements ParkingService {
                     ParkingLot lot = lotMap.get(id);
                     if (lot == null) continue;
 
-                    ParkingLotCache cache = BeanUtil.copyProperties(lot, ParkingLotCache.class);
+                    ParkingLotCache cache = parkingLotConverter.toCache(lot);
                     String json = JSONUtil.toJsonStr(cache);
 
                     jsonList.set(i, json);
                     AvaList.set(i, lot.getAvailableSpots());
 
-                    cacheMap.put(PARKING_INFO + id, json);
+                    cacheMap.put(PARKING_LOT_INFO + id, json);
                     spotsMap.put(String.valueOf(id), String.valueOf(lot.getAvailableSpots()));
                 }
 
@@ -146,6 +161,7 @@ public class ParkingServiceImpl implements ParkingService {
                 stringRedisTemplate.opsForHash().putAll(PARKING_AVAILABLE_SPOTS, spotsMap);
 
             } else if (missCount > 0) {
+                log.info("缓存部分未命中，缺失{}条", missCount);
                 List<Integer> missIndices = new ArrayList<>();
                 for (int i = 0; i < jsonList.size(); i++) {
                     if (jsonList.get(i) == null) {
@@ -153,6 +169,7 @@ public class ParkingServiceImpl implements ParkingService {
                     }
                 }
                 List<Long> missIds = missIndices.stream().map(ids::get).toList();
+                log.info("缺失的停车场ID: {}", missIds);
 
                 List<ParkingLot> missLots = parkingLotMapper.selectByIds(missIds);
 
@@ -169,18 +186,22 @@ public class ParkingServiceImpl implements ParkingService {
                     ParkingLot lot = missLotMap.get(id);
                     if (lot == null) continue;
 
-                    ParkingLotCache cache = BeanUtil.copyProperties(lot, ParkingLotCache.class);
+                    ParkingLotCache cache = parkingLotConverter.toCache(lot);
                     String json = JSONUtil.toJsonStr(cache);
 
                     jsonList.set(index, json);
                     AvaList.set(index, lot.getAvailableSpots());
 
-                    cacheMap.put(PARKING_INFO + id, json);
+                    cacheMap.put(PARKING_LOT_INFO + id, json);
                     spotsMap.put(String.valueOf(id), String.valueOf(lot.getAvailableSpots()));
                 }
 
                 stringRedisTemplate.opsForValue().multiSet(cacheMap);
                 stringRedisTemplate.opsForHash().putAll(PARKING_AVAILABLE_SPOTS, spotsMap);
+            }
+
+            if (missCount == 0) {
+                log.info("缓存全部命中: ids={}", ids);
             }
 
             // 3.合并可用车位 → 转为 VO
@@ -189,13 +210,13 @@ public class ParkingServiceImpl implements ParkingService {
                 parkingLot.setAvailableSpots((Integer) AvaList.get(i));
                 parkingLots.add(parkingLot);
             }
-            parkingLotVOs = BeanUtil.copyToList(parkingLots, ParkingLotVO.class);
+            parkingLotVOs = parkingLotConverter.toVOList(parkingLots);
 
         } catch (Exception e) {
-            log.info("从redis获取停车场详细信息失败，回查数据库");
+            log.warn("从redis获取停车场详细信息失败，回查数据库");
             // DB 降级：查询结果无序，需计算距离并重新排序
             List<ParkingLot> ParkingLots = parkingLotMapper.selectByIds(ids);
-            parkingLotVOs = BeanUtil.copyToList(ParkingLots, ParkingLotVO.class);
+            parkingLotVOs = parkingLotConverter.toVOList(ParkingLots);
             parkingLotVOs.forEach(vo -> {
                 double dis = DistanceUtil.haversine(
                         latitude.doubleValue(), longitude.doubleValue(),
@@ -205,6 +226,8 @@ public class ParkingServiceImpl implements ParkingService {
             parkingLotVOs.sort(Comparator.comparingDouble(vo ->
                     Double.parseDouble(vo.getDistance().replace(KILOMETER, ""))));
         }
+
+        log.info("返回附近停车场{}条", parkingLotVOs.size());
 
         // 4.覆盖 Geo 返回的距离到 VO
         for (int i = 0; i < parkingLotVOs.size() && i < results.getContent().size(); i++) {
@@ -239,12 +262,12 @@ public class ParkingServiceImpl implements ParkingService {
 
         // 1.Redis → Cache → VO
         try {
-            String json = stringRedisTemplate.opsForValue().get(PARKING_INFO + id);
+            String json = stringRedisTemplate.opsForValue().get(PARKING_LOT_INFO + id);
             if (json != null && !json.isEmpty()) {
                 ParkingLotCache cache = JSONUtil.toBean(json, ParkingLotCache.class);
                 Object obj = stringRedisTemplate.opsForHash().get(PARKING_AVAILABLE_SPOTS, String.valueOf(id));
                 Integer avaSpots = obj != null ? Integer.valueOf(obj.toString()) : null;
-                ParkingLotVO vo = BeanUtil.copyProperties(cache, ParkingLotVO.class);
+                ParkingLotVO vo = parkingLotConverter.cacheToVO(cache);
                 vo.setAvailableSpots(avaSpots);
                 localCache.put(id, vo);
                 return Result.ok(vo);
@@ -259,7 +282,7 @@ public class ParkingServiceImpl implements ParkingService {
             localCache.put(id, NULL_MARKER);
             throw new BusinessException(ResultConstant.BAD_REQUEST, "停车场不存在");
         }
-        ParkingLotVO vo = BeanUtil.copyProperties(parkingLot, ParkingLotVO.class);
+        ParkingLotVO vo = parkingLotConverter.toVO(parkingLot);
         vo.setAvailableSpots(parkingLot.getAvailableSpots());
         localCache.put(id, vo);
         return Result.ok(vo);
@@ -275,10 +298,71 @@ public class ParkingServiceImpl implements ParkingService {
         CacheResult<List<Integer>> statusResult = parkingDataProvider.getSpotStatusList(id);
         if (statusResult.isHit()) {
             List<Integer> statusList = statusResult.getData();
-            for (int i = 0; i < spots.size(); i++) {
+            for (int i = 0; i < Math.min(statusList.size(), spots.size()); i++) {
                 spots.get(i).setStatus(statusList.get(i));
             }
         }
         return Result.ok(spots);
+    }
+
+    @Override
+    public Result listAll() {
+        log.info("获取所有停车场列表");
+
+        List<ParkingLotVO> local = parkingLotListCache.getIfPresent(CaffeineConstant.PARKING_LOT_LIST_ALL_KEY);
+        if (local != null) {
+            log.info("停车场全量列表命中本地缓存");
+            return Result.ok(local);
+        }
+
+        CacheResult<List<ParkingLotVO>> redisResult = getLotListFromRedis();
+        if (redisResult.isHit()) {
+            log.info("停车场全量列表命中Redis缓存");
+            parkingLotListCache.put(CaffeineConstant.PARKING_LOT_LIST_ALL_KEY, redisResult.getData());
+            return Result.ok(redisResult.getData());
+        }
+
+        log.info("停车场全量列表缓存未命中，查询数据库");
+        List<ParkingLotVO> dbList = getLotListFromDb();
+        parkingLotListCache.put(CaffeineConstant.PARKING_LOT_LIST_ALL_KEY, dbList);
+        if (!redisResult.isError()) {
+            saveLotListToRedis(dbList);
+        }
+
+        return Result.ok(dbList);
+    }
+
+    private CacheResult<List<ParkingLotVO>> getLotListFromRedis() {
+        try {
+            String json = stringRedisTemplate.opsForValue()
+                    .get(PARKING_LOT_LIST_ALL);
+            if (json == null) return CacheResult.miss();
+            List<ParkingLotVO> list = JSONUtil.toList(JSONUtil.parseArray(json), ParkingLotVO.class);
+            return CacheResult.hit(list);
+        } catch (Exception e) {
+            log.warn("停车场全量列表Redis查询失败", e);
+            return CacheResult.error();
+        }
+    }
+
+    private void saveLotListToRedis(List<ParkingLotVO> voList) {
+        try {
+            stringRedisTemplate.opsForValue().set(
+                    PARKING_LOT_LIST_ALL,
+                    JSONUtil.toJsonStr(voList));
+            log.info("停车场全量列表已写入Redis，共{}条", voList.size());
+        } catch (Exception e) {
+            log.warn("停车场全量列表Redis写入失败", e);
+        }
+    }
+
+    private List<ParkingLotVO> getLotListFromDb() {
+        List<ParkingLot> lots = parkingLotMapper.selectList(null);
+        List<ParkingLotVO> voList = lots.stream().map(lot -> {
+            ParkingLotVO vo = parkingLotConverter.toVO(lot);
+            return vo;
+        }).toList();
+        log.info("从数据库查询到{}个停车场", voList.size());
+        return voList;
     }
 }

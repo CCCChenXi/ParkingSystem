@@ -3,7 +3,7 @@ package com.xigeandwillian.parkingsystem.common.interceptor;
 import com.xigeandwillian.parkingsystem.common.constant.HttpConstant;
 import com.xigeandwillian.parkingsystem.common.constant.JwtClaimsConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
-import com.xigeandwillian.parkingsystem.common.service.service.RedisService;
+import com.xigeandwillian.parkingsystem.common.service.RedisService;
 import com.xigeandwillian.parkingsystem.common.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;

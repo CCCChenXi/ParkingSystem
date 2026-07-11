@@ -1,24 +1,29 @@
 package com.xigeandwillian.parkingsystem.common.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
-import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
+import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
+import com.xigeandwillian.parkingsystem.client.vo.parkinglot.ParkingLotCache;
+import com.xigeandwillian.parkingsystem.client.vo.parkinglot.ParkingLotVO;
+import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotConverter;
+import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotConverter;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
-
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -32,6 +37,9 @@ public class ParkingDataProvider {
 
     private final ParkingSpotMapper parkingSpotMapper;
     private final ParkingOrderMapper parkingOrderMapper;
+    private final ParkingLotMapper parkingLotMapper;
+    private final ParkingLotConverter parkingLotConverter;
+    private final ParkingSpotConverter parkingSpotConverter;
     private final StringRedisTemplate stringRedisTemplate;
 
     @Resource(name = "parkingSpotCache")
@@ -54,12 +62,7 @@ public class ParkingDataProvider {
                         .eq(ParkingSpot::getLotId, lotId)
                         .orderByAsc(ParkingSpot::getSeq));
         List<SpotListVO> voList = spots.stream()
-                .map(s -> {
-                    SpotListVO vo = new SpotListVO();
-                    BeanUtil.copyProperties(s, vo);
-                    vo.setStatus(0);
-                    return vo;
-                })
+                .map(parkingSpotConverter::toListVO)
                 .toList();
 
         localCache.put(cacheKey, voList);
@@ -113,10 +116,10 @@ public class ParkingDataProvider {
 
     private CacheResult<List<Integer>> getSpotStatusFromRedis(Long lotId) {
         try {
-            String raw = stringRedisTemplate.opsForValue()
-                    .get(RedisConstant.Parking.PARKING_SPOT_STATUS + lotId);
-            if (raw == null) return CacheResult.miss();
-            byte[] bitmap = raw.getBytes(StandardCharsets.ISO_8859_1);
+            byte[] bitmap = stringRedisTemplate.execute((RedisCallback<byte[]>) conn ->
+                    conn.stringCommands().get(
+                            (RedisConstant.Parking.PARKING_SPOT_STATUS + lotId).getBytes()));
+            if (bitmap == null) return CacheResult.miss();
             List<Integer> list = new ArrayList<>(bitmap.length * 8);
             for (int i = 0; i < bitmap.length * 8; i++) {
                 boolean occupied = (bitmap[i / 8] & (1 << (7 - i % 8))) != 0;
@@ -138,9 +141,12 @@ public class ParkingDataProvider {
                     bitmap[i / 8] |= (byte) (1 << (7 - i % 8));
                 }
             }
-            stringRedisTemplate.opsForValue().set(
-                    RedisConstant.Parking.PARKING_SPOT_STATUS + lotId,
-                    new String(bitmap, StandardCharsets.ISO_8859_1));
+            stringRedisTemplate.execute((RedisCallback<Boolean>) conn -> {
+                conn.stringCommands().set(
+                        (RedisConstant.Parking.PARKING_SPOT_STATUS + lotId).getBytes(),
+                        bitmap);
+                return true;
+            });
         } catch (Exception e) {
             log.warn("车位状态Bitmap写入失败: lotId={}", lotId, e);
         }
@@ -162,11 +168,113 @@ public class ParkingDataProvider {
         try {
             stringRedisTemplate.opsForValue().set(
                     cacheKey,
-                    JSONUtil.toJsonStr(voList),
-                    RedisConstant.Parking.PARKING_SPOT_LIST_TTL,
-                    TimeUnit.SECONDS);
+                    JSONUtil.toJsonStr(voList));
         } catch (Exception e) {
             log.warn("车位列表Redis写入失败: cacheKey={}", cacheKey, e);
+        }
+    }
+
+    @PostConstruct
+    public void initCache() {
+        initParkingLotInfo();
+        initParkingLotListAll();
+        initParkingSpotList();
+        initSpotStatus();
+    }
+
+    private void initParkingLotInfo() {
+        try {
+            List<ParkingLot> lots = parkingLotMapper.selectList(null);
+            for (ParkingLot lot : lots) {
+                ParkingLotCache cache = parkingLotConverter.toCache(lot);
+                String key = RedisConstant.Parking.PARKING_LOT_INFO + lot.getId();
+                stringRedisTemplate.opsForValue().set(
+                        key, JSONUtil.toJsonStr(cache));
+            }
+            log.info("停车场信息缓存初始化完成, 共 {} 条", lots.size());
+        } catch (Exception e) {
+            log.error("停车场信息缓存初始化失败", e);
+        }
+    }
+
+    private void initParkingLotListAll() {
+        try {
+            List<ParkingLot> lots = parkingLotMapper.selectList(null);
+            List<ParkingLotVO> voList = parkingLotConverter.toVOList(lots);
+            stringRedisTemplate.opsForValue().set(
+                    RedisConstant.Parking.PARKING_LOT_LIST_ALL,
+                    JSONUtil.toJsonStr(voList));
+            log.info("停车场全量列表缓存初始化完成, 共 {} 条", voList.size());
+        } catch (Exception e) {
+            log.error("停车场全量列表缓存初始化失败", e);
+        }
+    }
+
+    private void initParkingSpotList() {
+        try {
+            List<ParkingLot> lots = parkingLotMapper.selectList(null);
+            for (ParkingLot lot : lots) {
+                Long lotId = lot.getId();
+                String key = RedisConstant.Parking.PARKING_SPOT_LIST + lotId;
+
+                List<ParkingSpot> spots = parkingSpotMapper.selectList(
+                        Wrappers.<ParkingSpot>lambdaQuery()
+                                .eq(ParkingSpot::getLotId, lotId)
+                                .orderByAsc(ParkingSpot::getSeq));
+                if (spots.isEmpty()) continue;
+
+                List<SpotListVO> voList = parkingSpotConverter.toListVOList(spots);
+
+                stringRedisTemplate.opsForValue().set(
+                        key, JSONUtil.toJsonStr(voList));
+            }
+            log.info("车位信息静态列表缓存初始化完成, 共 {} 个停车场", lots.size());
+        } catch (Exception e) {
+            log.error("车位信息静态列表缓存初始化失败", e);
+        }
+    }
+
+    private void initSpotStatus() {
+        try {
+            List<ParkingLot> lots = parkingLotMapper.selectList(null);
+            for (ParkingLot lot : lots) {
+                Long lotId = lot.getId();
+                String key = RedisConstant.Parking.PARKING_SPOT_STATUS + lotId;
+
+                stringRedisTemplate.delete(key);
+
+                List<ParkingSpot> spots = parkingSpotMapper.selectList(
+                        Wrappers.<ParkingSpot>lambdaQuery()
+                                .eq(ParkingSpot::getLotId, lotId)
+                                .orderByAsc(ParkingSpot::getSeq));
+                if (spots.isEmpty()) continue;
+
+                Set<Long> occupied = parkingOrderMapper.selectList(
+                                Wrappers.<ParkingOrder>lambdaQuery()
+                                        .select(ParkingOrder::getSpotId)
+                                        .eq(ParkingOrder::getLotId, lotId)
+                                        .in(ParkingOrder::getStatus,
+                                                OrderConstant.ORDER_STATUS_RESERVED,
+                                                OrderConstant.ORDER_STATUS_IN_PROGRESS))
+                        .stream().map(ParkingOrder::getSpotId)
+                        .collect(Collectors.toSet());
+
+                int size = spots.size();
+                byte[] bitmap = new byte[(size + 7) / 8];
+                for (int i = 0; i < size; i++) {
+                    if (occupied.contains(spots.get(i).getId())) {
+                        bitmap[i / 8] |= (byte) (1 << (7 - i % 8));
+                    }
+                }
+
+                stringRedisTemplate.execute((RedisCallback<Boolean>) conn -> {
+                    conn.stringCommands().set(key.getBytes(), bitmap);
+                    return true;
+                });
+            }
+            log.info("车位状态缓存初始化完成, 共 {} 个停车场", lots.size());
+        } catch (Exception e) {
+            log.error("车位状态缓存初始化失败", e);
         }
     }
 }

@@ -3,7 +3,8 @@ package com.xigeandwillian.parkingsystem.common.interceptor;
 import com.xigeandwillian.parkingsystem.common.constant.HttpConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
-import com.xigeandwillian.parkingsystem.common.service.service.RedisService;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
+import com.xigeandwillian.parkingsystem.common.service.RedisService;
 import com.xigeandwillian.parkingsystem.common.utils.AdminHolder;
 import com.xigeandwillian.parkingsystem.common.utils.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,9 +44,14 @@ public class JwtTokenAdminInterceptor implements HandlerInterceptor {
             log.info("校验token:{}", token);
             Long adminId = Long.valueOf(jwtUtil.getSubject(token));
 
-            Boolean sessionExists = redisService.hasKey(
+            CacheResult<Boolean> sessionResult = redisService.hasKey(
                     RedisConstant.Auth.ADMIN_SESSION_PREFIX + adminId);
-            if (sessionExists == null || !sessionExists) {
+            if (sessionResult.isError()) {
+                log.error("验证管理员session失败: adminId={}", adminId);
+                response.setStatus(ResultConstant.UNAUTHORIZED);
+                return false;
+            }
+            if (sessionResult.isMiss() || Boolean.FALSE.equals(sessionResult.getData())) {
                 log.warn("管理员session不存在，需重新登录: adminId={}", adminId);
                 response.setStatus(ResultConstant.UNAUTHORIZED);
                 return false;

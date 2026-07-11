@@ -1,7 +1,7 @@
 package com.xigeandwillian.parkingsystem.client.controller;
 
 import com.xigeandwillian.parkingsystem.client.dto.user.VehicleDTO;
-import com.xigeandwillian.parkingsystem.client.service.service.VehicleService;
+import com.xigeandwillian.parkingsystem.client.service.VehicleService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +36,7 @@ public class VehicleController {
      */
     @PostMapping
     public Result addVehicle(@Validated @RequestBody VehicleDTO vehicleDTO) {
-        log.info("现在执行添加车辆");
+        log.info("现在执行添加车辆: plateNumber={}", vehicleDTO.getPlateNumber());
         return vehicleService.addVehicle(vehicleDTO);
     }
 
@@ -48,7 +48,7 @@ public class VehicleController {
      */
     @PutMapping("/{id}")
     public Result updateVehicle(@Validated @RequestBody VehicleDTO vehicleDTO, @PathVariable Long id) {
-        log.info("现在执行更新车辆");
+        log.info("现在执行更新车辆: id={}", id);
         return vehicleService.updateVehicle(vehicleDTO, id);
     }
 
@@ -60,7 +60,7 @@ public class VehicleController {
      */
     @DeleteMapping("/{id}")
     public Result deleteVehicle(@PathVariable Long id) {
-        log.info("现在执行删除车辆");
+        log.info("现在执行删除车辆: id={}", id);
         return vehicleService.deleteVehicle(id);
     }
 

@@ -8,6 +8,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Objects;
+
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
@@ -19,7 +21,7 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Result handleMethodArgumentNotValidException(MethodArgumentNotValidException e){
-        String msg = e.getBindingResult().getFieldError().getDefaultMessage();
+        String msg = Objects.requireNonNull(e.getBindingResult().getFieldError()).getDefaultMessage();
         log.warn(msg);
         return Result.fail(ResultConstant.BAD_REQUEST, msg);
     }

@@ -1,6 +1,7 @@
 package com.xigeandwillian.parkingsystem.common.service.impl;
 
-import com.xigeandwillian.parkingsystem.common.service.service.RedisService;
+import com.xigeandwillian.parkingsystem.common.result.CacheResult;
+import com.xigeandwillian.parkingsystem.common.service.RedisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -16,63 +17,64 @@ public class RedisServiceImpl implements RedisService {
     private final StringRedisTemplate stringRedisTemplate;
 
     @Override
-    public Boolean hasKey(String key) {
+    public CacheResult<Boolean> hasKey(String key) {
         try {
-            return stringRedisTemplate.hasKey(key);
+            return CacheResult.hit(stringRedisTemplate.hasKey(key));
         } catch (Exception e) {
             log.error("Redis操作失败: hasKey, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 
     @Override
-    public String get(String key) {
+    public CacheResult<String> get(String key) {
         try {
-            return stringRedisTemplate.opsForValue().get(key);
+            String value = stringRedisTemplate.opsForValue().get(key);
+            return value != null ? CacheResult.hit(value) : CacheResult.miss();
         } catch (Exception e) {
             log.error("Redis操作失败: get, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 
     @Override
-    public Boolean set(String key, String value, long ttl, TimeUnit unit) {
+    public CacheResult<Boolean> set(String key, String value, long ttl, TimeUnit unit) {
         try {
             stringRedisTemplate.opsForValue().set(key, value, ttl, unit);
-            return true;
+            return CacheResult.hit(true);
         } catch (Exception e) {
             log.error("Redis操作失败: set, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 
     @Override
-    public Boolean delete(String key) {
+    public CacheResult<Boolean> delete(String key) {
         try {
-            return stringRedisTemplate.delete(key);
+            return CacheResult.hit(stringRedisTemplate.delete(key));
         } catch (Exception e) {
             log.error("Redis操作失败: delete, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 
     @Override
-    public Long increment(String key) {
+    public CacheResult<Long> increment(String key) {
         try {
-            return stringRedisTemplate.opsForValue().increment(key);
+            return CacheResult.hit(stringRedisTemplate.opsForValue().increment(key));
         } catch (Exception e) {
             log.error("Redis操作失败: increment, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 
     @Override
-    public Boolean expire(String key, long ttl, TimeUnit unit) {
+    public CacheResult<Boolean> expire(String key, long ttl, TimeUnit unit) {
         try {
-            return stringRedisTemplate.expire(key, ttl, unit);
+            return CacheResult.hit(stringRedisTemplate.expire(key, ttl, unit));
         } catch (Exception e) {
             log.error("Redis操作失败: expire, key={}", key, e);
-            return null;
+            return CacheResult.error();
         }
     }
 }

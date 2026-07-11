@@ -1,20 +1,25 @@
 package com.xigeandwillian.parkingsystem.client.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.xigeandwillian.parkingsystem.client.service.service.CouponService;
+import com.xigeandwillian.parkingsystem.client.service.CouponService;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponAvailableVO;
+import com.xigeandwillian.parkingsystem.common.service.impl.CouponDataProvider;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponScrollVO;
 import com.xigeandwillian.parkingsystem.client.mq.SeckillMessageProducer;
 import com.xigeandwillian.parkingsystem.client.mq.SeckillOrderEvent;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.UserCouponMyVO;
+import com.xigeandwillian.parkingsystem.client.websocket.NotificationPublisher;
 import com.xigeandwillian.parkingsystem.common.constant.CouponConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Coupon;
 import com.xigeandwillian.parkingsystem.common.entity.UserCoupon;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
+import com.xigeandwillian.parkingsystem.common.entity.Message;
 import com.xigeandwillian.parkingsystem.common.mapper.CouponMapper;
+import com.xigeandwillian.parkingsystem.common.mapper.UserConverter;
+import com.xigeandwillian.parkingsystem.common.mapper.MessageMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.UserCouponMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.utils.UserHolder;
@@ -43,6 +48,9 @@ public class CouponServiceImpl implements CouponService {
     private final CouponDataProvider couponDataProvider;
     private final StringRedisTemplate stringRedisTemplate;
     private final SeckillMessageProducer seckillMessageProducer;
+    private final MessageMapper messageMapper;
+    private final UserConverter userConverter;
+    private final NotificationPublisher notificationPublisher;
 
     private static final DefaultRedisScript<Long> SECKILL_LUA_SCRIPT;
 
@@ -97,7 +105,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public Result scrollQuery(Integer pageSize, Long lastTimestamp, Long lastId) {
-        int ps = (pageSize != null && pageSize > 0) ? pageSize : 10;
+        int ps = (pageSize != null && pageSize > 0) ? pageSize : CouponConstant.DEFAULT_PAGE_SIZE;
 
         List<CouponAvailableVO> all = couponDataProvider.getClaimableCoupons();
 
@@ -164,7 +172,7 @@ public class CouponServiceImpl implements CouponService {
 
     @Override
     public Result myCoupons(Long lastTimestamp, Long lastId, Integer pageSize, Integer status, String keyword) {
-        int ps = (pageSize != null && pageSize > 0) ? pageSize : 10;
+        int ps = (pageSize != null && pageSize > 0) ? pageSize : CouponConstant.DEFAULT_PAGE_SIZE;
 
         Long userId = UserHolder.get();
 
@@ -214,18 +222,7 @@ public class CouponServiceImpl implements CouponService {
     }
 
     private UserCouponMyVO toMyVO(UserCoupon uc, Coupon c) {
-        UserCouponMyVO vo = new UserCouponMyVO();
-        vo.setId(c.getId());
-        vo.setName(c.getName());
-        vo.setDescription(c.getDescription());
-        vo.setDiscountAmount(c.getDiscountAmount());
-        vo.setMinAmount(c.getMinAmount());
-        vo.setType(c.getType());
-        vo.setStatus(uc.getStatus());
-        vo.setCreateTime(uc.getCreateTime());
-        vo.setStartTime(c.getStartTime());
-        vo.setEndTime(c.getEndTime());
-        return vo;
+        return userConverter.toMyVO(c, uc);
     }
 
     private int binarySearchCursorMy(List<UserCouponMyVO> list, long lastTs, long lastId) {
@@ -275,6 +272,16 @@ public class CouponServiceImpl implements CouponService {
         userCoupon.setCouponId(id);
         userCoupon.setStatus(CouponConstant.USER_COUPON_STATUS_UNUSED);
         userCouponMapper.insert(userCoupon);
+
+        Message message = new Message();
+        message.setUserId(userId);
+        message.setTitle("领取成功");
+        message.setContent("优惠券 " + vo.getName() + " 已成功领取");
+        message.setType(CouponConstant.USER_COUPON_STATUS_UNUSED);
+        message.setIsRead(0);
+        messageMapper.insert(message);
+
+        notificationPublisher.publish(userId, "领取成功", "优惠券 " + vo.getName() + " 已成功领取", CouponConstant.USER_COUPON_STATUS_UNUSED);
 
         try {
             stringRedisTemplate.opsForSet().add(RedisConstant.Coupon.BOUGHT_KEY + id, String.valueOf(userId));

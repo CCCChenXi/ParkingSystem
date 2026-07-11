@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.client.vo.parkingLot;
+package com.xigeandwillian.parkingsystem.client.vo.parkinglot;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

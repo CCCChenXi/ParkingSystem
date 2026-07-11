@@ -6,10 +6,10 @@ import com.xigeandwillian.parkingsystem.client.vo.message.MessageVO;
 import com.xigeandwillian.parkingsystem.client.vo.message.PushMessageVO;
 import com.xigeandwillian.parkingsystem.client.vo.message.SyncMessageVO;
 import com.xigeandwillian.parkingsystem.common.entity.Message;
+import com.xigeandwillian.parkingsystem.common.mapper.MessageConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.MessageMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -36,6 +36,7 @@ public class NotificationWebSocketHandler extends TextWebSocketHandler {
     private static final int MAX_SYNC_COUNT = 100;
 
     private final MessageMapper messageMapper;
+    private final MessageConverter messageConverter;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -128,9 +129,7 @@ public class NotificationWebSocketHandler extends TextWebSocketHandler {
     }
 
     private MessageVO toVO(Message msg) {
-        MessageVO vo = new MessageVO();
-        BeanUtils.copyProperties(msg, vo);
-        return vo;
+        return messageConverter.toVO(msg);
     }
 
     private Map<String, String> parseQueryParams(String query) {

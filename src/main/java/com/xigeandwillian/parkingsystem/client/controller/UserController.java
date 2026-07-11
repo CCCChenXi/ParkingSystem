@@ -4,7 +4,7 @@ import com.xigeandwillian.parkingsystem.client.dto.user.CodeDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.ProfileEditDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.RegisterDTO;
 import com.xigeandwillian.parkingsystem.client.dto.user.LoginDTO;
-import com.xigeandwillian.parkingsystem.client.service.service.UserService;
+import com.xigeandwillian.parkingsystem.client.service.UserService;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +33,7 @@ public class UserController {
      */
     @PostMapping("/register")
     public Result register(@Validated @RequestBody RegisterDTO registerDTO) {
-        log.info("用户注册");
+        log.info("用户注册: username={}, phone={}", registerDTO.getUsername(), registerDTO.getPhone());
         return userService.register(registerDTO);
     }
 
@@ -85,6 +85,15 @@ public class UserController {
     public Result editProfile(@Validated @RequestBody ProfileEditDTO profileEditDTO) {
         log.info("修改用户信息: {}", profileEditDTO);
         return userService.editProfile(profileEditDTO);
+    }
+
+    /**
+     * 退出登录
+     */
+    @PostMapping("/logout")
+    public Result logout() {
+        log.info("用户退出登录");
+        return userService.logout();
     }
 
 }

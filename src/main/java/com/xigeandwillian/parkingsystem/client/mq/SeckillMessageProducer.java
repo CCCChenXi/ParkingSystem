@@ -1,6 +1,6 @@
 package com.xigeandwillian.parkingsystem.client.mq;
 
-import com.xigeandwillian.parkingsystem.common.config.RabbitMQConfig;
+import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -14,7 +14,7 @@ public class SeckillMessageProducer {
     private final RabbitTemplate rabbitTemplate;
 
     public void send(SeckillOrderEvent event) {
-        rabbitTemplate.convertAndSend(RabbitMQConfig.SECKILL_EXCHANGE, RabbitMQConfig.SECKILL_ROUTING_KEY, event);
+        rabbitTemplate.convertAndSend(MQConstant.SECKILL_EXCHANGE, MQConstant.SECKILL_ROUTING_KEY, event);
         log.info("秒杀消息已发送: {}", event);
     }
 }

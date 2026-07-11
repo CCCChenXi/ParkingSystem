@@ -1,4 +1,4 @@
-package com.xigeandwillian.parkingsystem.client.vo.parkingLot;
+package com.xigeandwillian.parkingsystem.client.vo.parkinglot;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -17,4 +17,5 @@ public class ParkingLotCache {
     private Integer totalSpots;
     private String imageUrl;
     private Integer status;
+    private BigDecimal hourlyRate;
 }
