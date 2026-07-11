@@ -1,13 +1,9 @@
 package com.xigeandwillian.parkingsystem.common.cache;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
-import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.admin.vo.parkinglot.LotListVO;
-import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
-import com.xigeandwillian.parkingsystem.common.entity.ParkingSpot;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -28,7 +24,6 @@ import java.util.stream.Collectors;
 public class ParkingCache {
 
     private final ParkingLotMapper parkingLotMapper;
-    private final ParkingSpotMapper parkingSpotMapper;
     private final CacheManager cacheManager;
     private final StringRedisTemplate stringRedisTemplate;
 
@@ -42,16 +37,6 @@ public class ParkingCache {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(cacheNames = CacheConstant.PARKING_SPOT_LIST, key = "#lotId")
-    public List<SpotListVO> getSpotsByLotId(Long lotId) {
-        log.info("查询停车场车位信息: {}", lotId);
-        return parkingSpotMapper.selectList(new QueryWrapper<ParkingSpot>().eq("lot_id", lotId))
-                .stream().map(spot -> {
-                    SpotListVO vo = new SpotListVO();
-                    BeanUtils.copyProperties(spot, vo);
-                    return vo;
-                }).collect(Collectors.toList());
-    }
 
     public void clearAll() {
         log.info("清除所有停车场缓存");

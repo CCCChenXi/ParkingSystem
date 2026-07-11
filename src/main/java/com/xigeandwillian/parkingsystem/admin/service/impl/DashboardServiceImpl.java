@@ -29,6 +29,8 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static java.time.format.DateTimeFormatter.ofPattern;
+
 @Slf4j
 @RequiredArgsConstructor
 @Service
@@ -236,6 +238,7 @@ public class DashboardServiceImpl implements DashboardService {
             vo.setLotName(finalLotNameMap.getOrDefault(order.getLotId(), ""));
             vo.setPlate(order.getPlateNumber());
             vo.setStatus(formatStatus(order.getStatus()));
+            vo.setTime(order.getCreateTime().format(ofPattern("HH:mm")));
             return vo;
         }).collect(Collectors.toList());
     }

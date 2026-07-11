@@ -24,7 +24,7 @@ spring:
 
   # ====================== RabbitMQ配置 ======================
   rabbitmq:
-    host: 47.99.169.107
+    host: localhost
     port: 5672
     username: xige
     password: 348452
@@ -33,6 +33,7 @@ spring:
 # ====================== 服务器配置 ======================
 server:
   port: 8080
+  forward-headers-strategy: framework
 
 # ====================== 日志配置 ======================
 logging:

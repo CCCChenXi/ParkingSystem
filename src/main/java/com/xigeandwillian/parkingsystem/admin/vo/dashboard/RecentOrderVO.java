@@ -7,4 +7,5 @@ public class RecentOrderVO {
     private String lotName;
     private String plate;
     private String status;
+    private String time;
 }

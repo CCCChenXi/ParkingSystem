@@ -6,6 +6,9 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
+
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
@@ -73,5 +76,56 @@ public class RabbitMQConfig {
     @Bean
     public Binding cacheInvalidateBinding(AnonymousQueue cacheInvalidateQueue, FanoutExchange cacheInvalidateExchange) {
         return BindingBuilder.bind(cacheInvalidateQueue).to(cacheInvalidateExchange);
+    }
+
+    // ──── 车位缓存重试（保证最终成功） ────
+    // 链路: afterCommit → Source(TTL=30s, DLX→RetryExchange) → Proc(消费者) → 成功广播 / 失败重发到Source / 用尽→Alert
+    public static final String PARKING_SPOT_CACHE_RETRY_EXCHANGE = "parking.spot.cache.retry.exchange";
+    public static final String PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE = "parking.spot.cache.update.source.queue";
+    public static final String PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE = "parking.spot.cache.create.source.queue";
+    public static final String PARKING_SPOT_CACHE_RETRY_PROC_QUEUE = "parking.spot.cache.retry.proc.queue";
+    public static final String PARKING_SPOT_CACHE_RETRY_ALERT_QUEUE = "parking.spot.cache.retry.alert.queue";
+
+    @Bean
+    public DirectExchange parkingSpotCacheRetryExchange() {
+        return new DirectExchange(PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+    }
+
+    @Bean
+    public Queue parkingSpotCacheUpdateSourceQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+        args.put("x-dead-letter-routing-key", "proc");
+        args.put("x-message-ttl", 30000);
+        return new Queue(PARKING_SPOT_CACHE_UPDATE_SOURCE_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue parkingSpotCacheCreateSourceQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", PARKING_SPOT_CACHE_RETRY_EXCHANGE);
+        args.put("x-dead-letter-routing-key", "proc");
+        args.put("x-message-ttl", 10000);
+        return new Queue(PARKING_SPOT_CACHE_CREATE_SOURCE_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public Queue parkingSpotCacheRetryProcQueue() {
+        return new Queue(PARKING_SPOT_CACHE_RETRY_PROC_QUEUE, true);
+    }
+
+    @Bean
+    public Binding parkingSpotCacheRetryProcBinding(Queue parkingSpotCacheRetryProcQueue, DirectExchange parkingSpotCacheRetryExchange) {
+        return BindingBuilder.bind(parkingSpotCacheRetryProcQueue).to(parkingSpotCacheRetryExchange).with("proc");
+    }
+
+    @Bean
+    public Queue parkingSpotCacheRetryAlertQueue() {
+        return new Queue(PARKING_SPOT_CACHE_RETRY_ALERT_QUEUE, true);
+    }
+
+    @Bean
+    public Binding parkingSpotCacheRetryAlertBinding(Queue parkingSpotCacheRetryAlertQueue, DirectExchange parkingSpotCacheRetryExchange) {
+        return BindingBuilder.bind(parkingSpotCacheRetryAlertQueue).to(parkingSpotCacheRetryExchange).with("alert");
     }
 }

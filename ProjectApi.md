@@ -450,26 +450,82 @@ PUT /api/orders/{id}/cancel
 
 ---
 
-### 2.4 消息管理
+### 2.4 消息管理（WebSocket）
 
-#### 消息列表
+消息系统基于 WebSocket 长连接，取代 REST 轮询。
+
+#### WebSocket 端点
+
 ```
-GET /api/messages
+ws://domain/ws/{userId}/messages?lastTimestamp={epochMs}&lastId={id}
 ```
 
-**Response `data`**
+**请求参数**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `userId` | Long | 路径参数，用户 ID |
+| `lastTimestamp` | Long | 客户端最新消息的 `createTime`（epoch ms），首次传 `0` |
+| `lastId` | Long | 客户端最新消息的 `id`，首次传 `0` |
+
+**后端行为**
+
+- `lastTimestamp=0 && lastId=0` → 返回该用户全部消息
+- `lastTimestamp>0` → `WHERE (createTime > lastTimestamp) OR (createTime = lastTimestamp AND id > lastId)`，按 `createTime DESC, id DESC` 排序，上限 100 条
+
+---
+
+#### 服务端 → 客户端消息
+
+**`sync` — 连接成功后一次性增量同步**
+
 ```json
-[
-  {
-    "id": 1,
-    "title": "预约成功",
-    "content": "科技园停车场A01已为您保留",
-    "type": 0,
-    "isRead": 0,
-    "createTime": "2026-06-23 14:30"
-  }
-]
+{
+  "type": "sync",
+  "messages": [
+    {
+      "id": 1,
+      "title": "预约成功",
+      "content": "科技园停车场A01已为您保留",
+      "type": 0,
+      "isRead": 0,
+      "createTime": "2026-06-23 14:30"
+    }
+  ],
+  "lastTimestamp": 1712345678000,
+  "lastId": 1
+}
 ```
+
+| 字段 | 说明 |
+|------|------|
+| `lastTimestamp` | 本次返回的最新消息 `createTime`（epoch ms），前端存入缓存 |
+| `lastId` | 本次返回的最新消息 `id`，前端存入缓存 |
+
+**`push` — 新消息产生时主动推送**
+
+```json
+{
+  "type": "push",
+  "message": {
+    "id": 2,
+    "title": "入场提醒",
+    "content": "您已入场科技园停车场",
+    "type": 1,
+    "isRead": 0,
+    "createTime": "2026-06-23 15:00"
+  },
+  "timestamp": 1712345680000,
+  "id": 2
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `timestamp` | 本条消息 `createTime`（epoch ms），前端更新缓存游标 |
+| `id` | 本条消息 `id`，前端更新缓存游标 |
+
+**消息类型**
 
 | type | 含义 |
 |------|------|
@@ -478,7 +534,9 @@ GET /api/messages
 | 2 | 结算通知 |
 | 3 | 系统消息 |
 
-#### 标记已读
+---
+
+#### 标记已读（REST）
 ```
 PUT /api/messages/{id}/read
 ```
@@ -488,7 +546,7 @@ PUT /api/messages/{id}/read
 { "code": 200, "message": "success" }
 ```
 
-#### 全部已读
+#### 全部已读（REST）
 ```
 PUT /api/messages/read-all
 ```

@@ -25,6 +25,8 @@ public class JacksonConfig {
         return builder -> {
             JavaTimeModule module = new JavaTimeModule();
             module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(deserializerFormatter));
+            module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")));
             builder.modules(module);
         };
     }

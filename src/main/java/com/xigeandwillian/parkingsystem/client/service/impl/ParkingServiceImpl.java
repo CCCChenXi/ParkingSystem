@@ -7,12 +7,13 @@ import com.xigeandwillian.parkingsystem.common.mapper.ParkingLotMapper;
 import com.xigeandwillian.parkingsystem.client.service.service.ParkingService;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotCache;
 import com.xigeandwillian.parkingsystem.client.vo.parkingLot.ParkingLotVO;
-import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
+import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
 import com.xigeandwillian.parkingsystem.common.constant.ResultConstant;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingLot;
 import com.xigeandwillian.parkingsystem.common.exception.BusinessException;
 import com.xigeandwillian.parkingsystem.common.result.Result;
+import com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider;
 import com.xigeandwillian.parkingsystem.common.utils.DistanceUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.*;
+
 import static com.xigeandwillian.parkingsystem.common.constant.DistanceConstant.KILOMETER;
 import static com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Parking.*;
 
@@ -266,20 +268,15 @@ public class ParkingServiceImpl implements ParkingService {
     @Override
     public Result parkingSpots(Long id) {
         log.info("获取停车场车位信息: lotId={}", id);
-        List<SpotVO> spots = parkingDataProvider.getAllSpotByLotId(id);
+        List<SpotListVO> spots = parkingDataProvider.getAllSpotByLotId(id);
         if (spots.isEmpty()) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂无车位");
         }
         CacheResult<List<Integer>> statusResult = parkingDataProvider.getSpotStatusList(id);
         if (statusResult.isHit()) {
             List<Integer> statusList = statusResult.getData();
-            if (statusList.size() == spots.size()) {
-                for (int i = 0; i < spots.size(); i++) {
-                    spots.get(i).setStatus(statusList.get(i));
-                }
-            } else {
-                log.warn("Bitmap长度与列表不一致, lotId={}, statusSize={}, spotSize={}",
-                        id, statusList.size(), spots.size());
+            for (int i = 0; i < spots.size(); i++) {
+                spots.get(i).setStatus(statusList.get(i));
             }
         }
         return Result.ok(spots);

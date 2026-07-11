@@ -1,9 +1,10 @@
-package com.xigeandwillian.parkingsystem.client.service.impl;
+package com.xigeandwillian.parkingsystem.common.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.benmanes.caffeine.cache.Cache;
-import com.xigeandwillian.parkingsystem.client.vo.parkingLot.SpotVO;
+import com.xigeandwillian.parkingsystem.admin.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.cache.CacheResult;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
@@ -34,15 +35,15 @@ public class ParkingDataProvider {
     private final StringRedisTemplate stringRedisTemplate;
 
     @Resource(name = "parkingSpotCache")
-    private Cache<String, List<SpotVO>> localCache;
+    private Cache<String, List<SpotListVO>> localCache;
 
-    public List<SpotVO> getAllSpotByLotId(Long lotId) {
+    public List<SpotListVO> getAllSpotByLotId(Long lotId) {
         String cacheKey = RedisConstant.Parking.PARKING_SPOT_LIST + lotId;
 
-        List<SpotVO> local = localCache.getIfPresent(cacheKey);
+        List<SpotListVO> local = localCache.getIfPresent(cacheKey);
         if (local != null) return local;
 
-        CacheResult<List<SpotVO>> redisResult = getSpotListFromRedis(cacheKey);
+        CacheResult<List<SpotListVO>> redisResult = getSpotListFromRedis(cacheKey);
         if (redisResult.isHit()) {
             localCache.put(cacheKey, redisResult.getData());
             return redisResult.getData();
@@ -52,8 +53,13 @@ public class ParkingDataProvider {
                 Wrappers.<ParkingSpot>lambdaQuery()
                         .eq(ParkingSpot::getLotId, lotId)
                         .orderByAsc(ParkingSpot::getSeq));
-        List<SpotVO> voList = spots.stream()
-                .map(s -> new SpotVO(s.getId(), s.getSeq(), s.getSpotNumber(), s.getType(), 0))
+        List<SpotListVO> voList = spots.stream()
+                .map(s -> {
+                    SpotListVO vo = new SpotListVO();
+                    BeanUtil.copyProperties(s, vo);
+                    vo.setStatus(0);
+                    return vo;
+                })
                 .toList();
 
         localCache.put(cacheKey, voList);
@@ -63,6 +69,11 @@ public class ParkingDataProvider {
         }
 
         return voList;
+    }
+
+    public void invalidateLocalSpotList(String cacheKey) {
+        localCache.invalidate(cacheKey);
+        log.info("本地车位列表缓存已清除: cacheKey={}", cacheKey);
     }
 
     public CacheResult<List<Integer>> getSpotStatusList(Long lotId) {
@@ -135,11 +146,11 @@ public class ParkingDataProvider {
         }
     }
 
-    private CacheResult<List<SpotVO>> getSpotListFromRedis(String cacheKey) {
+    private CacheResult<List<SpotListVO>> getSpotListFromRedis(String cacheKey) {
         try {
             String json = stringRedisTemplate.opsForValue().get(cacheKey);
             if (json == null) return CacheResult.miss();
-            List<SpotVO> list = JSONUtil.toList(JSONUtil.parseArray(json), SpotVO.class);
+            List<SpotListVO> list = JSONUtil.toList(JSONUtil.parseArray(json), SpotListVO.class);
             return CacheResult.hit(list);
         } catch (Exception e) {
             log.warn("车位列表Redis查询失败: cacheKey={}", cacheKey, e);
@@ -147,7 +158,7 @@ public class ParkingDataProvider {
         }
     }
 
-    private void saveSpotListToRedis(String cacheKey, List<SpotVO> voList) {
+    private void saveSpotListToRedis(String cacheKey, List<SpotListVO> voList) {
         try {
             stringRedisTemplate.opsForValue().set(
                     cacheKey,

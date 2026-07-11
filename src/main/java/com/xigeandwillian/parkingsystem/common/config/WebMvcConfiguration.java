@@ -28,6 +28,7 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
                 .addPathPatterns("/user/**")
                 .addPathPatterns("/coupons/**")
                 .addPathPatterns("/wallet/**")
+                .addPathPatterns("/messages/**")
                 .excludePathPatterns("/user/login")
                 .excludePathPatterns("/user/register")
                 .excludePathPatterns("/user/send-code");
