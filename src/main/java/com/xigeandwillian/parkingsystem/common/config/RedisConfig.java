@@ -7,6 +7,7 @@ import com.xigeandwillian.parkingsystem.common.constant.CacheConstant;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class RedisConfig {
 
     @Bean
+    @Primary
     public RedisCacheManager cacheManager(RedisConnectionFactory factory) {
         PolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()
                 .allowIfBaseType(Object.class)

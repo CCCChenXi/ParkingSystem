@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.result.CacheResult;
+import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.client.vo.parkinglot.ParkingLotCache;
@@ -45,6 +46,9 @@ public class ParkingDataProvider {
     @Resource(name = "parkingSpotCache")
     private Cache<String, List<SpotListVO>> localCache;
 
+    @Resource(name = "parkingSpotsCache")
+    private Cache<String, List<SpotListVO>> parkingSpotsCache;
+
     public List<SpotListVO> getAllSpotByLotId(Long lotId) {
         String cacheKey = RedisConstant.Parking.PARKING_SPOT_LIST + lotId;
 
@@ -77,6 +81,24 @@ public class ParkingDataProvider {
     public void invalidateLocalSpotList(String cacheKey) {
         localCache.invalidate(cacheKey);
         log.info("本地车位列表缓存已清除: cacheKey={}", cacheKey);
+    }
+
+    public List<SpotListVO> getParkingSpots(Long lotId) {
+        String cacheKey = CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + lotId;
+        return parkingSpotsCache.get(cacheKey, key -> {
+            List<SpotListVO> spots = getAllSpotByLotId(lotId);
+            if (spots.isEmpty()) return spots;
+            List<Integer> statusList = getSpotStatusList(lotId).getData();
+            for (int i = 0; i < Math.min(statusList.size(), spots.size()); i++) {
+                spots.get(i).setStatus(statusList.get(i));
+            }
+            return spots;
+        });
+    }
+
+    public void invalidateParkingSpotsCache(String cacheKey) {
+        parkingSpotsCache.invalidate(cacheKey);
+        log.info("本地parkingSpots缓存已清除: cacheKey={}", cacheKey);
     }
 
     public CacheResult<List<Integer>> getSpotStatusList(Long lotId) {

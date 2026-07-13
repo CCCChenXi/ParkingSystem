@@ -251,7 +251,7 @@ public class ParkingServiceImpl implements ParkingService {
     public Result parkingInfo(Long id) {
         log.info("获取停车场信息:{}", id);
 
-        // 0.Caffeine 本地缓存兜底（防恶意请求穿透到 DB）
+        // 0.Caffeine 本地缓存兜底
         ParkingLotVO cached = localCache.getIfPresent(id);
         if (cached != null) {
             if (cached == NULL_MARKER) {
@@ -291,16 +291,9 @@ public class ParkingServiceImpl implements ParkingService {
     @Override
     public Result parkingSpots(Long id) {
         log.info("获取停车场车位信息: lotId={}", id);
-        List<SpotListVO> spots = parkingDataProvider.getAllSpotByLotId(id);
+        List<SpotListVO> spots = parkingDataProvider.getParkingSpots(id);
         if (spots.isEmpty()) {
             throw new BusinessException(ResultConstant.BAD_REQUEST, "该停车场暂无车位");
-        }
-        CacheResult<List<Integer>> statusResult = parkingDataProvider.getSpotStatusList(id);
-        if (statusResult.isHit()) {
-            List<Integer> statusList = statusResult.getData();
-            for (int i = 0; i < Math.min(statusList.size(), spots.size()); i++) {
-                spots.get(i).setStatus(statusList.get(i));
-            }
         }
         return Result.ok(spots);
     }

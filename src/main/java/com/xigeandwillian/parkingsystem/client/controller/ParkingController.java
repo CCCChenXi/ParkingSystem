@@ -68,6 +68,7 @@ public class ParkingController {
     public Result parkingSpots(@PathVariable Long id) {
         log.info("获取停车场车位信息: id={}", id);
         return parkingService.parkingSpots(id);
+//        return Result.ok();
     }
 
 }

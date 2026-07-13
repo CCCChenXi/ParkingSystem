@@ -17,6 +17,13 @@ public class CaffeineConstant {
     /** 车位列表本地缓存过期时间(分钟) */
     public static final long PARKING_SPOT_EXPIRE_MINUTES = 5;
 
+    /** 车位列表+状态组合缓存最大条数 */
+    public static final long PARKING_SPOTS_MAXIMUM_SIZE = 500;
+    /** 车位列表+状态组合缓存过期时间(秒) */
+    public static final long PARKING_SPOTS_EXPIRE_SECONDS = 60;
+    /** 车位列表+状态组合缓存Key前缀 */
+    public static final String PARKING_SPOTS_KEY_PREFIX = "parkingSpots:";
+
     /** 车辆信息本地缓存最大条数 */
     public static final long VEHICLE_MAXIMUM_SIZE = 10000;
     /** 车辆信息本地缓存过期时间(分钟) */

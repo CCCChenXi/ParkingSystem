@@ -2,6 +2,7 @@ package com.xigeandwillian.parkingsystem.client.mq;
 
 import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateEvent;
 import com.xigeandwillian.parkingsystem.common.service.impl.CouponDataProvider;
+import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
 import com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant.Coupon;
@@ -26,6 +27,8 @@ public class CacheInvalidateConsumer {
                 couponDataProvider.invalidateLocalAvailable();
             } else if (event.getCacheKey().startsWith(RedisConstant.Parking.PARKING_SPOT_LIST)) {
                 parkingDataProvider.invalidateLocalSpotList(event.getCacheKey());
+            } else if (event.getCacheKey().startsWith(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX)) {
+                parkingDataProvider.invalidateParkingSpotsCache(event.getCacheKey());
             } else {
                 couponDataProvider.invalidateLocalDetail();
             }

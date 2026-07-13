@@ -1,12 +1,15 @@
 package com.xigeandwillian.parkingsystem.client.mq;
 
 import com.xigeandwillian.parkingsystem.client.websocket.NotificationPublisher;
+import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import com.xigeandwillian.parkingsystem.common.constant.OrderConstant;
 import com.xigeandwillian.parkingsystem.common.entity.Message;
 import com.xigeandwillian.parkingsystem.common.entity.ParkingOrder;
 import com.xigeandwillian.parkingsystem.common.mapper.MessageMapper;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingOrderMapper;
+import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateProducer;
+import com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -26,6 +29,8 @@ public class OrderMessageConsumer {
     private final ParkingOrderMapper parkingOrderMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final NotificationPublisher notificationPublisher;
+    private final ParkingDataProvider parkingDataProvider;
+    private final CacheInvalidateProducer cacheInvalidateProducer;
 
     @RabbitListener(queues = MQConstant.BOOKING_NOTIFY_QUEUE)
     public void handleNotify(OrderEvent event) {
@@ -50,6 +55,8 @@ public class OrderMessageConsumer {
         parkingOrderMapper.updateById(order);
         //4.bitmap释放车位
         stringRedisTemplate.opsForValue().setBit(PARKING_SPOT_STATUS + event.getLotId(), event.getSeq(), false);
+        parkingDataProvider.invalidateParkingSpotsCache(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + event.getLotId());
+        cacheInvalidateProducer.sendCacheInvalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + event.getLotId());
         log.info("预约已过期: orderId={}", event.getOrderId());
         Message message = createMessage(event, "预约已取消", "由于您未在指定时间内入场，您预约的订单已取消", OrderConstant.ORDER_STATUS_CANCELLED);
         messageMapper.insert(message);

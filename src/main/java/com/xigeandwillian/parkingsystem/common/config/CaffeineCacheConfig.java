@@ -83,4 +83,12 @@ public class CaffeineCacheConfig {
                 .build();
     }
 
+    @Bean("parkingSpotsCache")
+    public Cache<String, List<SpotListVO>> parkingSpotsCache() {
+        return Caffeine.newBuilder()
+                .maximumSize(CaffeineConstant.PARKING_SPOTS_MAXIMUM_SIZE)
+                .expireAfterWrite(CaffeineConstant.PARKING_SPOTS_EXPIRE_SECONDS, TimeUnit.SECONDS)
+                .build();
+    }
+
 }

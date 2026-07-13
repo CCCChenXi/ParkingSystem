@@ -73,9 +73,7 @@ public class ParkingLotServiceImpl implements ParkingLotService {
         LambdaQueryWrapper<ParkingLot> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.select(ParkingLot::getId, ParkingLot::getName);
         List<ParkingLot> lots = parkingLotMapper.selectList(queryWrapper);
-        List<LotNameListVO> voList = lots.stream().map(lot -> {
-            return parkingLotConverter.toNameListVO(lot);
-        }).collect(Collectors.toList());
+        List<LotNameListVO> voList = lots.stream().map(lot -> parkingLotConverter.toNameListVO(lot)).collect(Collectors.toList());
         return Result.ok(voList);
     }
 

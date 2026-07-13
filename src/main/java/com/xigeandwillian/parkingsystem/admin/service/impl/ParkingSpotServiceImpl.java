@@ -9,6 +9,7 @@ import com.xigeandwillian.parkingsystem.admin.mq.ParkingSpotCacheRetryEvent;
 import com.xigeandwillian.parkingsystem.admin.service.ParkingSpotService;
 import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateEvent;
+import com.xigeandwillian.parkingsystem.common.constant.CaffeineConstant;
 import com.xigeandwillian.parkingsystem.common.result.CacheResult;
 import com.xigeandwillian.parkingsystem.common.constant.MQConstant;
 import com.xigeandwillian.parkingsystem.common.constant.RedisConstant;
@@ -21,6 +22,8 @@ import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotConverter;
 import com.xigeandwillian.parkingsystem.common.mapper.ParkingSpotMapper;
 import com.xigeandwillian.parkingsystem.common.result.Result;
 import com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider;
+import com.github.benmanes.caffeine.cache.Cache;
+import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -43,6 +46,9 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
     private final StringRedisTemplate stringRedisTemplate;
     private final ParkingDataProvider parkingDataProvider;
     private final RabbitTemplate rabbitTemplate;
+
+    @Resource(name = "parkingSpotsCache")
+    private Cache<String, List<SpotListVO>> parkingSpotsCache;
 
     /**
      * 为了保证同一停车场内车位seq连续，不允许删除车位
@@ -190,11 +196,14 @@ public class ParkingSpotServiceImpl extends ServiceImpl<ParkingSpotMapper, Parki
     }
 
     private void clearSpotCacheAndBroadcast(Long lotId, Runnable redisOps, String sourceQueueName) {
+        parkingSpotsCache.invalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + lotId);
         try {
             redisOps.run();
             log.info("Redis车位缓存清理成功: lotId={}", lotId);
             rabbitTemplate.convertAndSend(MQConstant.CACHE_INVALIDATE_EXCHANGE, null,
                     new CacheInvalidateEvent(RedisConstant.Parking.PARKING_SPOT_LIST + lotId));
+            rabbitTemplate.convertAndSend(MQConstant.CACHE_INVALIDATE_EXCHANGE, null,
+                    new CacheInvalidateEvent(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + lotId));
         } catch (Exception e) {
             log.warn("Redis车位缓存清理失败，发送到重试队列: lotId={}", lotId, e);
             try {

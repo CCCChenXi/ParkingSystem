@@ -10,6 +10,7 @@ import com.xigeandwillian.parkingsystem.client.dto.order.SettleDTO;
 import com.xigeandwillian.parkingsystem.client.mapper.WalletLogMapper;
 import com.xigeandwillian.parkingsystem.client.mq.BookingMessagePublisher;
 import com.xigeandwillian.parkingsystem.client.mq.OrderEvent;
+import com.xigeandwillian.parkingsystem.common.mq.CacheInvalidateProducer;
 import com.xigeandwillian.parkingsystem.client.service.ParkingOrderService;
 import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
 import com.xigeandwillian.parkingsystem.common.service.impl.CouponDataProvider;
@@ -60,6 +61,7 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
     private final ParkingOrderConverter parkingOrderConverter;
     private final StringRedisTemplate stringRedisTemplate;
     private final BookingMessagePublisher bookingMessagePublisher;
+    private final CacheInvalidateProducer cacheInvalidateProducer;
 
     private final CouponDataProvider couponDataProvider;
     private final com.xigeandwillian.parkingsystem.common.service.impl.ParkingDataProvider parkingDataProvider;
@@ -101,6 +103,8 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
             parkingOrderMapper.deleteById(bookOrder.getId());
             throw new BusinessException(ResultConstant.BAD_REQUEST, "车位已被被占用");
         }
+        parkingDataProvider.invalidateParkingSpotsCache(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + bookDTO.getLotId());
+        cacheInvalidateProducer.sendCacheInvalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + bookDTO.getLotId());
         //4.MQ发送消息
         OrderEvent event = new OrderEvent(
                 bookOrder.getId(), bookOrder.getLotId(), bookOrder.getSpotId(),
@@ -235,6 +239,8 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
             parkingOrderMapper.deleteById(order.getId());
             throw new BusinessException(ResultConstant.BAD_REQUEST, "车位已被被占用");
         }
+        parkingDataProvider.invalidateParkingSpotsCache(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + bookDTO.getLotId());
+        cacheInvalidateProducer.sendCacheInvalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + bookDTO.getLotId());
         //4.MQ发送消息
         OrderEvent event = new OrderEvent(
                 order.getId(), order.getLotId(), order.getSpotId(),
@@ -272,6 +278,8 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
         } catch (Exception e) {
             log.error("Redis释放车位异常: lotId={}, seq={}", lotId, seq, e);
         }
+        parkingDataProvider.invalidateParkingSpotsCache(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + lotId);
+        cacheInvalidateProducer.sendCacheInvalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + lotId);
         return Result.ok();
     }
 
@@ -397,6 +405,8 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
                             log.warn("释放车位失败，加入重试队列: lotId={}, seq={}", finalLotId, seq, e);
                             bookingMessagePublisher.sendSpotReleaseRetry(finalLotId, seq);
                         }
+                        parkingDataProvider.invalidateParkingSpotsCache(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + finalLotId);
+                        cacheInvalidateProducer.sendCacheInvalidate(CaffeineConstant.PARKING_SPOTS_KEY_PREFIX + finalLotId);
                         notificationPublisher.publish(
                                 UserHolder.get(), "结算完成", "停车费用已结算", 2);
                     }

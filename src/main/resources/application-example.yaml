@@ -8,6 +8,10 @@ spring:
     username: root
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 5
+      connection-timeout: 10000
 
   # ====================== Redis配置 ======================
   data:
@@ -19,9 +23,9 @@ spring:
       lettuce:
         pool:
           enabled: true
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
 
   # ====================== RabbitMQ配置 ======================
   rabbitmq:
@@ -34,6 +38,11 @@ spring:
 # ====================== 服务器配置 ======================
 server:
   port: 8080
+  tomcat:
+    accept-count: 200
+    threads:
+      max: 400
+      min-spare: 20
 
 # ====================== JWT配置 ======================
 jwt:
