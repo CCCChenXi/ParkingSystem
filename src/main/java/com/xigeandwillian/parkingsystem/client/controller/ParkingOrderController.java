@@ -45,9 +45,14 @@ public class ParkingOrderController {
      * @return
      */
     @GetMapping
-    public Result orderList(@RequestParam(required = false) Integer status) {
-        log.info("获取订单列表: status={}", status);
-        return parkingOrderService.orderList(status);
+    public Result orderList(
+            @RequestParam Integer status,
+            @RequestParam(required = false) Long lastTimestamp,
+            @RequestParam(required = false) Long lastId,
+            @RequestParam(required = false, defaultValue = "10") Integer pageSize) {
+        log.info("获取订单列表: status={}, lastTimestamp={}, lastId={}, pageSize={}",
+                status, lastTimestamp, lastId, pageSize);
+        return parkingOrderService.orderList(status, lastTimestamp, lastId, pageSize);
     }
 
 

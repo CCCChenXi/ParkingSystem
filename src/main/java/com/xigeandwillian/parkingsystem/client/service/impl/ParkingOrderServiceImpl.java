@@ -16,6 +16,7 @@ import com.xigeandwillian.parkingsystem.client.vo.coupon.CouponDetailVO;
 import com.xigeandwillian.parkingsystem.common.service.impl.CouponDataProvider;
 import com.xigeandwillian.parkingsystem.client.vo.order.OrderConsumeVO;
 import com.xigeandwillian.parkingsystem.client.vo.order.OrderInfoVO;
+import com.xigeandwillian.parkingsystem.client.vo.order.OrderScrollVO;
 import com.xigeandwillian.parkingsystem.client.vo.order.OrderVO;
 import com.xigeandwillian.parkingsystem.common.vo.parkingspot.SpotListVO;
 import com.xigeandwillian.parkingsystem.common.constant.*;
@@ -35,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -115,62 +117,61 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
     }
 
     @Override
-    public Result orderList(Integer status) {
-        //获取用户ID
+    public Result orderList(Integer status, Long lastTimestamp, Long lastId, Integer pageSize) {
         Long userId = UserHolder.get();
-        //根据id,状态,时间查找排序
+        int ps = (pageSize != null && pageSize > 0) ? pageSize : 10;
+
         List<ParkingOrder> orders = parkingOrderMapper.selectList(
                 new LambdaQueryWrapper<ParkingOrder>()
                         .eq(ParkingOrder::getUserId, userId)
-                        .eq(status != null, ParkingOrder::getStatus, status)
-                        .orderByDesc(ParkingOrder::getCreateTime));
-        //用户不存在订单->返回空集合
+                        .eq(ParkingOrder::getStatus, status)
+                        .and(lastTimestamp != null && lastId != null, wrapper ->
+                                wrapper.lt(ParkingOrder::getCreateTime,
+                                                LocalDateTime.ofInstant(
+                                                        Instant.ofEpochMilli(lastTimestamp),
+                                                        ZoneOffset.ofHours(8)))
+                                        .or(w -> w
+                                                .eq(ParkingOrder::getCreateTime,
+                                                        LocalDateTime.ofInstant(
+                                                                Instant.ofEpochMilli(lastTimestamp),
+                                                                ZoneOffset.ofHours(8)))
+                                                .lt(ParkingOrder::getId, lastId)))
+                        .orderByDesc(ParkingOrder::getCreateTime, ParkingOrder::getId)
+                        .last("LIMIT " + (ps + 1)));
+
         if (orders.isEmpty()) {
-            return Result.ok(Collections.emptyList());
+            return Result.ok(new OrderScrollVO(List.of(), null, null, false));
         }
 
-        //获取所有停车场id(set去重)
+        boolean hasMore = orders.size() > ps;
+        if (hasMore) orders = orders.subList(0, ps);
+
         Set<Long> lotIds = orders.stream().map(ParkingOrder::getLotId).collect(Collectors.toSet());
-        //获取所有车位id(set去重)
         Set<Long> spotIds = orders.stream().map(ParkingOrder::getSpotId).collect(Collectors.toSet());
-        //用于存储停车场名称,车位编号
         Map<Long, String> lotNameMap = new HashMap<>();
         Map<Long, String> spotNumberMap = new HashMap<>();
 
-        //批量获取
         for (Long lotId : lotIds) {
-            //获取停车场名称
-            String lotJson = stringRedisTemplate.opsForValue().get(RedisConstant.Parking.PARKING_LOT_INFO + lotId);
-            if (lotJson != null && !lotJson.isEmpty()) {
-                ParkingLot lot = JSONUtil.toBean(lotJson, ParkingLot.class);
-                //1.存储停车场名称
-                lotNameMap.put(lotId, lot.getName());
+            String lotJson = stringRedisTemplate.opsForValue()
+                    .get(RedisConstant.Parking.PARKING_LOT_INFO + lotId);
+            if (lotJson != null) {
+                lotNameMap.put(lotId, JSONUtil.toBean(lotJson, ParkingLot.class).getName());
             } else {
-                //未命中的数据库查询
                 ParkingLot lot = parkingLotMapper.selectById(lotId);
                 if (lot != null) lotNameMap.put(lotId, lot.getName());
             }
-
-            //获取停车场车位信息
             String spotListJson = stringRedisTemplate.opsForValue()
                     .get(RedisConstant.Parking.PARKING_SPOT_LIST + lotId);
-            if (spotListJson != null && !spotListJson.isEmpty()) {
-                List<SpotListVO> spotList = JSONUtil.toList(JSONUtil.parseArray(spotListJson), SpotListVO.class);
-                for (SpotListVO spot : spotList) {
-                    //2.存储车位编号
-                    spotNumberMap.put(spot.getId(), spot.getSpotNumber());
-                }
+            if (spotListJson != null) {
+                JSONUtil.toList(JSONUtil.parseArray(spotListJson), SpotListVO.class)
+                        .forEach(s -> spotNumberMap.put(s.getId(), s.getSpotNumber()));
             }
         }
-
-        //Redis未命中的车位，按id集合一次查库
         Set<Long> missSpotIds = spotIds.stream()
-                .filter(id -> !spotNumberMap.containsKey(id))
-                .collect(Collectors.toSet());
+                .filter(id -> !spotNumberMap.containsKey(id)).collect(Collectors.toSet());
         if (!missSpotIds.isEmpty()) {
-            parkingSpotMapper.selectList(
-                            new LambdaQueryWrapper<ParkingSpot>()
-                                    .in(ParkingSpot::getId, missSpotIds))
+            parkingSpotMapper.selectList(new LambdaQueryWrapper<ParkingSpot>()
+                            .in(ParkingSpot::getId, missSpotIds))
                     .forEach(s -> spotNumberMap.put(s.getId(), s.getSpotNumber()));
         }
 
@@ -181,7 +182,12 @@ public class ParkingOrderServiceImpl implements ParkingOrderService {
             return vo;
         }).toList();
 
-        return Result.ok(voList);
+        ParkingOrder last = orders.get(orders.size() - 1);
+        Long nextTimestamp = last.getCreateTime()
+                .toInstant(ZoneOffset.ofHours(8)).toEpochMilli();
+        Long nextId = last.getId();
+
+        return Result.ok(new OrderScrollVO(voList, nextTimestamp, nextId, hasMore));
     }
 
     /**

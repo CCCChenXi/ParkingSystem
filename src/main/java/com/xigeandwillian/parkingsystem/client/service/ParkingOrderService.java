@@ -8,7 +8,7 @@ public interface ParkingOrderService {
 
     Result bookSpot(BookDTO bookDTO);
 
-    Result orderList(Integer status);
+    Result orderList(Integer status, Long lastTimestamp, Long lastId, Integer pageSize);
 
     Result checkEnter(Long id);
 
